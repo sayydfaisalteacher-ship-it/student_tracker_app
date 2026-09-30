@@ -34,6 +34,9 @@ label{font-size:14px;color:var(--mut)}
 .rb button.on.o,.chip.o{background:var(--o);color:#fff;border-color:var(--o)}
 .rb button.on.r,.chip.r{background:var(--r);color:#fff;border-color:var(--r)}
 .chip{display:inline-block;border-radius:20px;padding:2px 10px;font-size:13px;font-weight:700}
+.qnwrap{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 6px}
+.qnwrap button{font-size:11.5px;padding:4px 9px;border-radius:14px;border:1px solid var(--bd);background:var(--bg);color:var(--mut);cursor:pointer}
+.qnwrap button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
 nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--bd);display:flex;padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px))}
 nav button{flex:1;background:none;border:0;font-size:11px;color:var(--mut);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border-radius:12px;margin:0 2px}
 nav button b{font-size:20px}nav button.on{color:var(--pri);font-weight:800;background:color-mix(in srgb,var(--pri) 15%,transparent)}
@@ -56,6 +59,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:6px 4px;b
 const RT={4:['ممتاز','g'],3:['جيد','b'],2:['يحتاج متابعة','o'],1:['ضعيف','r']};
 const ATT={p:['حاضر','g'],l:['متأخر','o'],e:['مستأذن','b'],a:['غائب','r']};
 const CRIT=[['par','المشاركة'],['beh','السلوك'],['hw','الواجبات']];
+const QN=['نائم أثناء الحصة','استخدام الهاتف','لم يُحضر الواجب','مشارك بفعالية','يحتاج مراجعة أكثر','تحدّث دون إذن','متعاون مع زملائه','متأخر عن الحصة','مشتّت الانتباه','أداء متميز'];
 function rowScore(row){
   if(row&&row.c){const v=CRIT.map(x=>row.c[x[0]]).filter(Boolean);if(v.length)return v.reduce((a,b)=>a+b,0)/v.length}
   if(row&&row.r)return row.r; // بيانات قديمة بتقدير واحد قبل التحديث
@@ -345,12 +349,19 @@ function evalV(){
   ${sts.map(s=>{const r=S.rows[s.id]||{},at=r.att||'p',c=r.c||{};return `<div class="card"><div class="row">${av(s)}<b class="sp">${esc(s.name)}</b></div>
   <div class="rb" style="grid-template-columns:repeat(4,1fr)">${['p','l','e','a'].map(ak=>`<button class="${ATT[ak][1]} ${at===ak?'on':''}" onclick="setAtt('${s.id}','${ak}')">${ATT[ak][0]}</button>`).join('')}</div>
   <div style="${at==='a'?'opacity:.45':''}">${CRIT.map(cr=>`<div class="mut" style="font-size:12px;margin-top:6px">${cr[1]}</div><div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c[cr[0]]===v?'on':''}" onclick="rateC('${s.id}','${cr[0]}',${v})">${RT[v][0]}</button>`).join('')}</div>`).join('')}</div>
+  <div class="qnwrap">${QN.map(t=>{const active=(r.n||'').split('، ').includes(t);return `<button type="button" class="${active?'on':''}" onclick="addQN('${s.id}',this)" data-t="${esc(t)}">${esc(t)}</button>`}).join('')}</div>
   <input placeholder="ملاحظة (اختياري)" value="${esc(r.n||'')}" oninput="note('${s.id}',this.value)" style="margin-bottom:0"></div>`}).join('')||'<p class="mut">لا يوجد طلاب في هذا الصف.</p>'}
   <button class="btn" style="width:100%;padding:14px" onclick="saveEval()">حفظ الحصة</button>`;
 }
 function setE(k,v){S.e[k]=v;if(k==='c')S.e.s='';render()}
 function rateC(id,key,v){const row=S.rows[id]=S.rows[id]||{};row.c=row.c||{};row.c[key]=v;render()}
 function note(id,t){S.rows[id]=Object.assign(S.rows[id]||{},{n:t})}
+function addQN(id,btn){
+  const t=btn.getAttribute('data-t'),cur=(S.rows[id]&&S.rows[id].n)||'';
+  let parts=cur?cur.split('، ').filter(Boolean):[];
+  const i=parts.indexOf(t);if(i>-1)parts.splice(i,1);else parts.push(t);
+  S.rows[id]=Object.assign(S.rows[id]||{},{n:parts.join('، ')});render();
+}
 function setAtt(id,v){S.rows[id]=Object.assign(S.rows[id]||{},{att:v});render()}
 function allGood(){db.students.filter(x=>x.classId===S.e.c).forEach(s=>{const row=S.rows[s.id]=S.rows[s.id]||{};row.c={};CRIT.forEach(cr=>row.c[cr[0]]=4)});render()}
 function allPresent(){db.students.filter(x=>x.classId===S.e.c).forEach(s=>{S.rows[s.id]=Object.assign(S.rows[s.id]||{},{att:'p'})});render()}
@@ -453,10 +464,41 @@ function exportProfile(id){
 
 /* ===== النسخ الاحتياطي (نص JSON) ===== */
 function backupV(){
+  const fb=fbCfg();
   return `<h1>نسخ احتياطي</h1>
   <div class="card"><b>تصدير</b><p class="mut">يحفظ ملف JSON على جهازك يحتوي كل البيانات (الصفوف، المواد، الطلاب، التقييمات).</p><button class="btn sm" onclick="exportBackup()">📥 تنزيل نسخة احتياطية</button></div>
   <div class="card"><b>استيراد</b><p class="mut">اختر ملف نسخة احتياطية سابقة (JSON). سيستبدل هذا كل البيانات الحالية.</p><input type="file" id="bf" accept=".json,application/json" onchange="importBackupFile(this)"><div class="er" id="er"></div></div>
+  <div class="card"><b>المزامنة السحابية (Firebase) — اختياري</b>
+  <p class="mut">لمشاركة نفس البيانات يدوياً بين عدة أجهزة (بدون حسابات معلمين). تحتاج مشروع Firebase مجاني بقاعدة Firestore. <b>لن تعمل هذه الميزة داخل معاينة Claude</b> بسبب قيود الأمان هنا، لكنها تعمل بعد رفع الملف على استضافة حقيقية مثل GitHub Pages.</p>
+  <label>معرّف المشروع (Project ID)</label><input id="fbProj" value="${esc(fb.proj||'')}" oninput="fbSet()">
+  <label>مفتاح API (Web API Key)</label><input id="fbKey" value="${esc(fb.key||'')}" oninput="fbSet()">
+  <label>رمز المزامنة (اخترعه بنفسك وشاركه فقط مع من تريده أن يرى نفس البيانات)</label><input id="fbCode" value="${esc(fb.code||'')}" oninput="fbSet()">
+  <div class="row"><button class="btn sec sm sp" onclick="fbUpload()">⬆️ رفع للسحابة</button><button class="btn sec sm sp" onclick="fbDownload()">⬇️ تنزيل من السحابة</button></div>
+  <p class="mut" style="font-size:12px">⚠️ لتفعيلها: من Firebase Console أنشئ Firestore Database، ومن Rules اجعل القاعدة <code>allow read, write: if true;</code> مؤقتاً. هذا يعني أن أي شخص يعرف "رمز المزامنة" يقدر يقرأ/يكتب هذه البيانات تحديداً، فاختر رمزاً غير متوقَّع ولا تستخدمه لبيانات حساسة جداً.</p>
+  </div>
   <div class="card"><button class="btn sec sm" onclick="ask('حذف كل البيانات وإعادة البيانات التجريبية؟',()=>{db=seed();save();render()})">إعادة ضبط</button></div>`;
+}
+function fbCfg(){try{return JSON.parse(localStorage.getItem('sp1-fb')||'{}')}catch(e){return{}}}
+function fbSet(){try{localStorage.setItem('sp1-fb',JSON.stringify({proj:fbProj.value.trim(),key:fbKey.value.trim(),code:fbCode.value.trim()}))}catch(e){}}
+function fbUrl(cfg){return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(cfg.proj)}/databases/(default)/documents/backups/${encodeURIComponent(cfg.code)}?key=${encodeURIComponent(cfg.key)}`}
+async function fbUpload(){
+  fbSet();const cfg=fbCfg();
+  if(!cfg.proj||!cfg.key||!cfg.code)return toast('أكمل بيانات فايربيس أولاً (المعرف والمفتاح والرمز)');
+  try{
+    const res=await fetch(fbUrl(cfg),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:{data:{stringValue:JSON.stringify(db)},updated:{stringValue:new Date().toISOString()}}})});
+    if(!res.ok)throw 0;toast('تم الرفع للسحابة ✓');
+  }catch(e){toast('تعذّر الرفع. تحقق من الإعدادات وقواعد Firestore والاتصال بالإنترنت')}
+}
+async function fbDownload(){
+  fbSet();const cfg=fbCfg();
+  if(!cfg.proj||!cfg.key||!cfg.code)return toast('أكمل بيانات فايربيس أولاً');
+  try{
+    const res=await fetch(fbUrl(cfg));if(!res.ok)throw 0;
+    const j=await res.json(),str=j.fields&&j.fields.data&&j.fields.data.stringValue;
+    if(!str)throw 0;const d=JSON.parse(str);
+    if(!d.classes||!d.students||!d.subjects||!d.evals)throw 0;
+    ask('استبدال البيانات الحالية بالنسخة من السحابة؟',()=>{db=d;save();toast('تم التنزيل من السحابة ✓');go('home')});
+  }catch(e){toast('تعذّر الجلب. تأكد من وجود نسخة مرفوعة مسبقاً بنفس الرمز')}
 }
 function exportBackup(){
   const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
