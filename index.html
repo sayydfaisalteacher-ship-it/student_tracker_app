@@ -185,19 +185,65 @@ function render2(){ // تحديث القائمة فقط أثناء البحث
   const q=S.q.trim(),cf=S.sc||'';
   document.getElementById('sl').innerHTML=stuList(db.students.filter(s=>(!cf||s.classId===cf)&&(!q||s.name.includes(q)||s.num.includes(q))));
 }
-let PH='';
+let PH='',edit=null;
 function stuForm(id){
-  const s=db.students.find(x=>x.id===id)||{name:'',num:'',classId:S.sc||(db.classes[0]||{}).id||'',level:'mid',photo:''};PH=s.photo;
-  dlg(`<h2>${id?'تعديل طالب':'إضافة طالب'}</h2><div class="row"><img id="pv" class="av big" src="${s.photo||NOAV}"><div class="sp"><label>صورة الطالب (من الجهاز أو الكاميرا)</label><input type="file" accept="image/*" onchange="pickPhoto(this)"></div></div>
+  const s=db.students.find(x=>x.id===id)||{name:'',num:'',classId:S.sc||(db.classes[0]||{}).id||'',level:'mid',photo:''};PH=s.photo;edit=null;
+  dlg(`<h2>${id?'تعديل طالب':'إضافة طالب'}</h2>
+  <div class="row" style="align-items:flex-start"><canvas id="ecv" width="180" height="180" style="border-radius:12px;background:#eee;touch-action:none;cursor:grab;flex:none"></canvas>
+  <div class="sp"><label>صورة الطالب (من الجهاز أو الكاميرا)</label><input type="file" accept="image/*" onchange="loadEditImg(this)">
+  <div id="ectl" style="display:none">
+  <div class="row"><button type="button" class="btn sec sm" onclick="rotEdit(-90)">⟲ تدوير</button><button type="button" class="btn sec sm" onclick="rotEdit(90)">تدوير ⟳</button></div>
+  <label>التكبير/التصغير</label><input type="range" id="ez" min="100" max="300" value="100" oninput="edit.scale=this.value/100;drawEdit()">
+  <label><input type="checkbox" id="ebgc" style="width:auto" onchange="toggleBgRemove(this.checked)"> إزالة الخلفية وتبديلها بلون (الأنسب لخلفية موحدة اللون كالحائط)</label>
+  <div id="ebgopts" style="display:none">
+  <label>لون الخلفية البديل</label><div class="row">${['#ffffff','#e6f0fa','#eeeeee','#fff6d9'].map(c=>`<button type="button" onclick="setBgColor('${c}')" style="width:30px;height:30px;border-radius:8px;background:${c};border:2px solid var(--bd);padding:0"></button>`).join('')}<input type="color" value="#ffffff" onchange="setBgColor(this.value)" style="width:40px;padding:2px"></div>
+  <label>حساسية الإزالة</label><input type="range" id="ethresh" min="10" max="100" value="40" oninput="edit.thresh=+this.value;drawEdit()">
+  </div></div></div></div>
   <label>اسم الطالب *</label><input id="f1" value="${esc(s.name)}"><label>الرقم الأكاديمي *</label><input id="f2" value="${esc(s.num)}" inputmode="numeric">
   <label>الصف</label><select id="f3">${db.classes.map(c=>`<option value="${c.id}" ${c.id===s.classId?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
   <label>المستوى المبدئي</label><select id="f4">${Object.keys(LV).map(k=>`<option value="${k}" ${k===s.level?'selected':''}>${LV[k][0]}</option>`).join('')}</select>
   <div class="er" id="er"></div><div class="row"><button class="btn sp" onclick="saveStu('${id||''}')">حفظ</button><button class="btn sec sp" onclick="closeD()">إلغاء</button></div>`);
+  const cv=document.getElementById('ecv'),ctx=cv.getContext('2d');
+  ctx.fillStyle='#c9d8d5';ctx.fillRect(0,0,180,180);
+  if(s.photo){const im=new Image();im.onload=()=>{edit={img:im,scale:1,rot:0,offX:0,offY:0,bg:'#ffffff',removeBg:false,thresh:40};document.getElementById('ectl').style.display='block';bindEditCanvas();drawEdit()};im.src=s.photo}
 }
-function pickPhoto(inp){
+function loadEditImg(inp){
   const f=inp.files[0];if(!f)return;const r=new FileReader();
-  r.onload=()=>{const i=new Image();i.onload=()=>{const c=document.createElement('canvas');c.width=c.height=110;const x=c.getContext('2d'),m=Math.min(i.width,i.height);x.drawImage(i,(i.width-m)/2,(i.height-m)/2,m,m,0,0,110,110);PH=c.toDataURL('image/jpeg',.7);document.getElementById('pv').src=PH};i.src=r.result};
+  r.onload=()=>{const im=new Image();im.onload=()=>{edit={img:im,scale:1,rot:0,offX:0,offY:0,bg:'#ffffff',removeBg:false,thresh:40};document.getElementById('ectl').style.display='block';document.getElementById('ez').value=100;document.getElementById('ebgc').checked=false;document.getElementById('ebgopts').style.display='none';bindEditCanvas();drawEdit()};im.src=r.result};
   r.readAsDataURL(f);
+}
+function rotEdit(d){edit.rot=(edit.rot+d+360)%360;drawEdit()}
+function toggleBgRemove(v){edit.removeBg=v;document.getElementById('ebgopts').style.display=v?'block':'none';drawEdit()}
+function setBgColor(c){edit.bg=c;drawEdit()}
+function bindEditCanvas(){
+  const cv=document.getElementById('ecv');let sx,sy,ox,oy,active=false;
+  const start=(x,y)=>{active=true;sx=x;sy=y;ox=edit.offX;oy=edit.offY};
+  const move=(x,y)=>{if(!active)return;edit.offX=ox+(x-sx);edit.offY=oy+(y-sy);drawEdit()};
+  const end=()=>active=false;
+  cv.onmousedown=e=>start(e.offsetX,e.offsetY);cv.onmousemove=e=>move(e.offsetX,e.offsetY);cv.onmouseup=end;cv.onmouseleave=end;
+  cv.ontouchstart=e=>{const t=e.touches[0],r=cv.getBoundingClientRect();start(t.clientX-r.left,t.clientY-r.top)};
+  cv.ontouchmove=e=>{e.preventDefault();const t=e.touches[0],r=cv.getBoundingClientRect();move(t.clientX-r.left,t.clientY-r.top)};
+  cv.ontouchend=end;
+}
+function drawEdit(){
+  if(!edit)return;const N=180;
+  const off=document.createElement('canvas');off.width=off.height=N;const octx=off.getContext('2d');
+  octx.save();octx.translate(N/2+edit.offX,N/2+edit.offY);octx.rotate(edit.rot*Math.PI/180);
+  const iw=edit.img.width,ih=edit.img.height,diag=Math.sqrt(2)*N,base=diag/Math.min(iw,ih),s=base*edit.scale;
+  octx.drawImage(edit.img,-iw*s/2,-ih*s/2,iw*s,ih*s);octx.restore();
+  if(edit.removeBg){
+    const id=octx.getImageData(0,0,N,N),d=id.data;
+    const cor=[[0,0],[N-1,0],[0,N-1],[N-1,N-1]];let r=0,g=0,b=0;
+    cor.forEach(([x,y])=>{const i=(y*N+x)*4;r+=d[i];g+=d[i+1];b+=d[i+2]});r/=4;g/=4;b/=4;
+    const th=edit.thresh;
+    for(let i=0;i<d.length;i+=4){const dr=d[i]-r,dg=d[i+1]-g,db=d[i+2]-b;if(Math.sqrt(dr*dr+dg*dg+db*db)<th)d[i+3]=0}
+    octx.putImageData(id,0,0);
+  }
+  const cv=document.getElementById('ecv'),ctx=cv.getContext('2d');ctx.clearRect(0,0,N,N);
+  if(edit.removeBg){ctx.fillStyle=edit.bg;ctx.fillRect(0,0,N,N)}
+  ctx.drawImage(off,0,0);
+  const small=document.createElement('canvas');small.width=small.height=140;small.getContext('2d').drawImage(cv,0,0,140,140);
+  PH=small.toDataURL('image/jpeg',.85);
 }
 function saveStu(id){
   const n=f1.value.trim(),u=f2.value.trim();
@@ -209,6 +255,7 @@ function saveStu(id){
   save();closeD();render();
 }
 function delStu(id){ask('حذف الطالب وكل تقييماته؟',()=>{db.students=db.students.filter(s=>s.id!==id);Object.values(db.evals).forEach(e=>delete e.rows[id]);save();render()})}
+
 
 /* ===== استيراد من إكسل ===== */
 async function getDL(){
