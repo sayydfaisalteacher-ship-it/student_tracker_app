@@ -406,14 +406,28 @@ function exportProfile(id){
 
 /* ===== النسخ الاحتياطي (نص JSON) ===== */
 function backupV(){
-  return `<h1>نسخ احتياطي</h1><div class="card"><b>تصدير</b><p class="mut">انسخ النص أدناه واحفظه في مكان آمن.</p><textarea id="bk" rows="5" readonly onclick="this.select()">${esc(JSON.stringify(db))}</textarea><button class="btn sm" onclick="bk.select();document.execCommand('copy');toast('تم النسخ ✓')">نسخ</button></div>
-  <div class="card"><b>استيراد</b><p class="mut">الصق نسخة سابقة. سيستبدل هذا البيانات الحالية.</p><textarea id="im" rows="5"></textarea><div class="er" id="er"></div><button class="btn del sm" onclick="doImport()">استيراد</button></div>
+  return `<h1>نسخ احتياطي</h1>
+  <div class="card"><b>تصدير</b><p class="mut">يحفظ ملف JSON على جهازك يحتوي كل البيانات (الصفوف، المواد، الطلاب، التقييمات).</p><button class="btn sm" onclick="exportBackup()">📥 تنزيل نسخة احتياطية</button></div>
+  <div class="card"><b>استيراد</b><p class="mut">اختر ملف نسخة احتياطية سابقة (JSON). سيستبدل هذا كل البيانات الحالية.</p><input type="file" id="bf" accept=".json,application/json" onchange="importBackupFile(this)"><div class="er" id="er"></div></div>
   <div class="card"><button class="btn sec sm" onclick="ask('حذف كل البيانات وإعادة البيانات التجريبية؟',()=>{db=seed();save();render()})">إعادة ضبط</button></div>`;
 }
-function doImport(){
-  try{const d=JSON.parse(im.value);if(!d.classes||!d.students||!d.subjects||!d.evals)throw 0;ask('استبدال البيانات الحالية بالنسخة الملصقة؟',()=>{db=d;save();toast('تم الاستيراد ✓');go('home')})}catch(e){err('النص غير صالح. تأكد من نسخ النسخة الاحتياطية كاملة')}
+function exportBackup(){
+  const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  saveBlob(blob,`نسخة_احتياطية_${today()}.json`);
+}
+function importBackupFile(inp){
+  const f=inp.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=(e)=>{
+    let d;try{d=JSON.parse(e.target.result);if(!d.classes||!d.students||!d.subjects||!d.evals)throw 0}
+    catch(x){return err('الملف غير صالح. تأكد أنه ملف نسخة احتياطية صحيح بصيغة JSON')}
+    ask('استبدال البيانات الحالية بالنسخة المستوردة؟',()=>{db=d;save();toast('تم الاستيراد ✓');go('home')});
+  };
+  r.onerror=()=>err('تعذّرت قراءة الملف');
+  r.readAsText(f);
 }
 render();
 </script>
+
 </body>
 </html>
