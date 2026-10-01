@@ -75,7 +75,7 @@ function seed(){
   const c='c1',m='s1',s='s2';
   const n=[['أحمد علي','1001','adv'],['سارة محمد','1002','mid'],['خالد عمر','1003','mid'],['نور حسن','1004','low'],['يوسف سعد','1005','adv']];
   return{classes:[{id:c,name:'الصف الخامس - أ'}],
-   subjects:[{id:m,name:'رياضيات',classIds:[c],slots:[{d:0,p:2},{d:2,p:1},{d:4,p:3}]},{id:s,name:'علوم',classIds:[c],slots:[{d:1,p:2},{d:3,p:4}]}],
+   subjects:[{id:m,name:'رياضيات',classIds:[c],slots:[{d:0,p:2},{d:2,p:1},{d:4,p:3}],curriculum:['الفصل المشترك الأكبر','القسمة على رقمين','الكسور العشرية','المعادلات البسيطة']},{id:s,name:'علوم',classIds:[c],slots:[{d:1,p:2},{d:3,p:4}],curriculum:['دورة الماء','حالات المادة','النظام الشمسي']}],
    students:n.map((x,i)=>({id:'t'+i,name:x[0],num:x[1],classId:c,level:x[2],photo:''})),evals:{}};
 }
 let db=null;try{db=JSON.parse(localStorage.getItem('sp1')||'null')}catch(e){}
@@ -117,12 +117,13 @@ function err(m){document.getElementById('er').textContent=m}
 
 /* ===== الرئيسية ===== */
 function home(){
-  const alerts=alertList(),notDone=classesNotEvaluatedToday();
+  const alerts=alertList(),notDone=classesNotEvaluatedToday(),gaps=topicGaps();
   const th=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
   return `<div class="row"><h1 class="sp">متابعة أداء الطلاب</h1><button class="btn sec sm" onclick="toggleTheme()">${th==='dark'?'☀️ فاتح':'🌙 داكن'}</button></div>
   <div class="row" style="margin-bottom:10px">
   <div class="card sp" style="text-align:center;border-color:${alerts.length?'var(--r)':'var(--bd)'}" onclick="go('reports')"><div style="font-size:26px;font-weight:800">${alerts.length}</div><div class="mut">تنبيه متابعة</div></div>
   <div class="card sp" style="text-align:center" onclick="go('eval')"><div style="font-size:26px;font-weight:800">${notDone.length}</div><div class="mut">صف لم يُقيَّم اليوم</div></div>
+  <div class="card sp" style="text-align:center;border-color:${gaps.length?'var(--o)':'var(--bd)'}" onclick="S.rtab='plan';go('reports')"><div style="font-size:26px;font-weight:800">${gaps.length}</div><div class="mut">توثيق متأخر</div></div>
   </div>
   <div class="grid">
   <button class="tile main" onclick="go('todayEval')"><b>✅</b>تقييم حصة اليوم</button>
@@ -161,19 +162,22 @@ function slotRow(d,p){
 }
 function addSlot(){document.getElementById('sls').insertAdjacentHTML('beforeend',slotRow(0,1))}
 function subForm(id){
-  const s=db.subjects.find(x=>x.id===id)||{name:'',classIds:[],slots:[]};
+  const s=db.subjects.find(x=>x.id===id)||{name:'',classIds:[],slots:[],curriculum:[]};
   dlg(`<h2>${id?'تعديل مادة':'إضافة مادة'}</h2><label>اسم المادة</label><input id="f1" value="${esc(s.name)}"><label>الصفوف</label>
   ${db.classes.map(c=>`<div><label><input type="checkbox" class="cc" style="width:auto" value="${c.id}" ${s.classIds.includes(c.id)?'checked':''}> ${esc(c.name)}</label></div>`).join('')}
   <label>الحصص الأسبوعية</label><div id="sls">${s.slots.map(x=>slotRow(x.d,x.p)).join('')}</div><button class="btn sec sm" onclick="addSlot()">+ حصة</button>
+  <label>خطة المنهج (اختياري، درس واحد في كل سطر وبالترتيب)</label><textarea id="f5" rows="5" placeholder="مثال:&#10;الفصل المشترك الأكبر&#10;القسمة على رقمين&#10;المعادلات البسيطة">${esc((s.curriculum||[]).join('\n'))}</textarea>
   <div class="er" id="er"></div><div class="row"><button class="btn sp" onclick="saveSub('${id||''}')">حفظ</button><button class="btn sec sp" onclick="closeD()">إلغاء</button></div>`);
 }
 function saveSub(id){
   const n=f1.value.trim();if(!n)return err('اسم المادة مطلوب');
-  const o={name:n,classIds:[...document.querySelectorAll('.cc:checked')].map(x=>x.value),slots:[...document.querySelectorAll('.sl')].map(r=>{const q=r.querySelectorAll('select');return{d:+q[0].value,p:+q[1].value}})};
+  const curriculum=f5.value.split('\n').map(x=>x.trim()).filter(Boolean);
+  const o={name:n,classIds:[...document.querySelectorAll('.cc:checked')].map(x=>x.value),slots:[...document.querySelectorAll('.sl')].map(r=>{const q=r.querySelectorAll('select');return{d:+q[0].value,p:+q[1].value}}),curriculum};
   if(id)Object.assign(db.subjects.find(x=>x.id===id),o);else db.subjects.push({id:uid(),...o});
   save();closeD();render();
 }
 function delSub(id){ask('حذف المادة وكل تقييماتها؟',()=>{db.subjects=db.subjects.filter(s=>s.id!==id);Object.keys(db.evals).forEach(k=>{if(db.evals[k].s===id)delete db.evals[k]});save();render()})}
+
 
 /* ===== الطلاب ===== */
 function studentsV(){
@@ -344,6 +348,7 @@ function evalV(){
   <label>المادة</label><select onchange="setE('s',this.value)">${subs.map(x=>`<option value="${x.id}" ${x.id===e.s?'selected':''}>${esc(x.name)}</option>`).join('')||'<option value="">لا توجد مواد لهذا الصف</option>'}</select>
   <div class="row"><div class="sp"><label>التاريخ</label><input type="date" value="${e.d}" onchange="setE('d',this.value)"></div><div class="sp"><label>الحصة</label><select onchange="setE('p',+this.value)">${[1,2,3,4,5,6,7].map(x=>`<option value="${x}" ${x===e.p?'selected':''}>${x}</option>`).join('')}</select></div></div>
   <label>موضوع الحصة (اختياري)</label><input placeholder="مثال: القسمة على رقمين" value="${esc(S.topic||'')}" oninput="S.topic=this.value" style="margin-bottom:0"></div>
+  ${(()=>{const pr=subjectProgress(e.s,e.c);if(!pr)return '';return `<div class="card"><b>📘 تقدّم المنهج</b><div class="bar" style="margin:6px 0"><div style="width:${Math.min(100,pr.taught/pr.total*100)}%;background:var(--pri)"></div></div><div class="mut" style="font-size:13px">تم توثيق ${pr.taught} من ${pr.total} درساً</div>${pr.next?`<div class="mut" style="margin-top:6px">الدرس المتوقع التالي حسب الخطة: <b style="color:var(--tx)">${esc(pr.next)}</b></div><button class="btn sec sm" style="margin-top:6px" data-next="${esc(pr.next)}" onclick="S.topic=this.getAttribute('data-next');render()">استخدام هذا كموضوع الحصة</button>`:'<div class="mut" style="margin-top:6px">✅ تم توثيق كل دروس الخطة المقررة</div>'}</div>`;})()}
   ${db.evals[k]?'<p class="mut">هذه الحصة محفوظة سابقاً، يمكنك تعديلها.</p>':''}
   <div class="row"><button class="btn sec sm" onclick="allGood()">تعيين الكل ممتاز</button><button class="btn sec sm" onclick="allPresent()">تعيين الكل حاضر</button><span class="mut">${done} من ${sts.length} مقيَّمون</span></div>
   <input id="eq" placeholder="بحث عن طالب بالاسم أو الرقم الأكاديمي" value="${esc(S.eq||'')}" oninput="S.eq=this.value;renderEvalList()">
@@ -364,6 +369,23 @@ function renderEvalList(){
   document.getElementById('evl').innerHTML=evalListHtml(sts);
 }
 function setE(k,v){S.e[k]=v;if(k==='c'){S.e.s='';S.eq=''}render()}
+function subjectProgress(sid,cid){
+  const sub=db.subjects.find(x=>x.id===sid);if(!sub||!sub.curriculum||!sub.curriculum.length)return null;
+  const taught=Object.values(db.evals).filter(e=>e.s===sid&&e.c===cid&&e.topic&&e.topic.trim()).length;
+  const total=sub.curriculum.length;
+  return{taught,total,next:taught<total?sub.curriculum[taught]:null};
+}
+function topicGaps(threshold){
+  threshold=threshold||7;const t=new Date(today()),out=[];
+  db.subjects.forEach(sub=>{sub.classIds.forEach(cid=>{
+    const sess=Object.values(db.evals).filter(e=>e.s===sub.id&&e.c===cid).sort((a,b)=>a.d<b.d?-1:1);
+    if(!sess.length)return;
+    let lastTopic=null;for(let i=sess.length-1;i>=0;i--){if(sess[i].topic&&sess[i].topic.trim()){lastTopic=sess[i].d;break}}
+    const baseline=lastTopic||sess[0].d,days=Math.round((t-new Date(baseline))/864e5);
+    if(days>=threshold)out.push({sub,cid,days,hasAny:!!lastTopic});
+  })});
+  return out.sort((a,b)=>b.days-a.days);
+}
 function rateC(id,key,v){const row=S.rows[id]=S.rows[id]||{};row.c=row.c||{};row.c[key]=v;render()}
 function note(id,t){S.rows[id]=Object.assign(S.rows[id]||{},{n:t})}
 function addQN(id,btn){
@@ -414,6 +436,7 @@ function reportsV(){
   const classAvg=avg(allH),presentPct=allAtt.length?Math.round(allAtt.filter(x=>x.att==='p').length/allAtt.length*100):null;
   const sessions=sessionsList(f);
   const plan=lessonPlanData(f);
+  const gaps=topicGaps();
   const opt=(a,v,t)=>`<option value="${v}" ${f[a]===v?'selected':''}>${t}</option>`;
   const body=tab==='sessions'
   ?`<h2>سجل الحصص ومواضيعها</h2>${sessions.map(e=>{
@@ -423,14 +446,15 @@ function reportsV(){
       <div class="mut" style="font-size:12px;margin-top:4px">${rated} من ${rv.length} مُقيَّمون تفصيلياً · ${present} حاضر</div></div>`;
     }).join('')||'<p class="mut">لا توجد حصص مسجّلة في هذه الفترة.</p>'}`
   :tab==='plan'
-  ?Object.keys(plan).length?Object.keys(plan).map(sid=>{
+  ?`<h2>تنبيه توثيق</h2>${gaps.length?gaps.map(g=>`<div class="card row" style="border-color:var(--o)"><div class="sp"><b>${esc(sn(g.sub.id))}</b> · ${esc(cn(g.cid))}<div class="mut" style="font-size:13px">${g.hasAny?`مرّت ${g.days} يوماً منذ آخر موضوع مُسجَّل`:`لم يُسجَّل أي موضوع منذ أول حصة قبل ${g.days} يوماً`}</div></div></div>`).join(''):'<p class="mut">لا توجد فجوات توثيق حالياً — كل المواد موثَّقة بانتظام 👍</p>'}
+  <h2>خطة الدروس</h2>${Object.keys(plan).length?Object.keys(plan).map(sid=>{
       const arr=plan[sid];
-      return `<h2>${esc(sn(sid))} <span class="mut" style="font-size:13px;font-weight:400">(${arr.length} درساً مسجّلاً)</span></h2>
+      return `<h3 style="margin:10px 0 4px">${esc(sn(sid))} <span class="mut" style="font-size:13px;font-weight:400">(${arr.length} درساً مسجّلاً)</span></h3>
       <div class="card sc"><table><tr><th>#</th><th>التاريخ</th><th>الحصة</th><th>الصف</th><th>الموضوع</th></tr>
       ${arr.map((e,i)=>`<tr><td>${i+1}</td><td>${e.d}</td><td>${e.p}</td><td>${esc(cn(e.c))}</td><td>${esc(e.topic)}</td></tr>`).join('')}
       </table></div>`;
     }).join('')
-    :'<p class="mut">لا توجد حصص لها "موضوع" مسجَّل بعد في هذه الفترة. سجّل موضوع الحصة من شاشة "تقييم حصة" ليظهر هنا.</p>'
+    :'<p class="mut">لا توجد حصص لها "موضوع" مسجَّل بعد في هذه الفترة. سجّل موضوع الحصة من شاشة "تقييم حصة" ليظهر هنا.</p>'}`
   :`<h2>تنبيهات المتابعة</h2>${alerts.map(x=>`<div class="card row" onclick="S.pid='${x.s.id}';go('profile')" style="cursor:pointer;border-color:var(--r)">${av(x.s)}<div class="sp"><b>${esc(x.s.name)}</b><div class="mut">تكرر «ضعيف» أو «يحتاج متابعة» في آخر 5 تقييمات</div></div></div>`).join('')||'<p class="mut">لا توجد تنبيهات حالياً.</p>'}
   <h2>إحصائية تفصيلية لكل طالب</h2>${rows.map(x=>`<div class="card" onclick="S.pid='${x.s.id}';go('profile')" style="cursor:pointer;${alertIds.has(x.s.id)?'border-color:var(--r)':''}">
   <div class="row">${av(x.s)}<div class="sp"><b>${esc(x.s.name)}</b><div class="mut" style="font-size:12px">${esc(x.s.num)} · ${esc(cn(x.s.classId))} · المستوى المبدئي: ${LV[x.s.level][0]}</div></div></div>
