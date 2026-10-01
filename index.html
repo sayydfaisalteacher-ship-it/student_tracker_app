@@ -340,20 +340,30 @@ function evalV(){
   const sts=db.students.filter(x=>x.classId===e.c),k=[e.c,e.s,e.d,e.p].join('|');
   if(S.k!==k){S.k=k;S.rows=JSON.parse(JSON.stringify((db.evals[k]||{}).rows||{}));S.topic=(db.evals[k]||{}).topic||''}
   const done=Object.values(S.rows).filter(r=>rowScore(r)!==null).length;
-  return `<h1>تقييم حصة</h1><div class="card"><label>الصف</label><select onchange="setE('c',this.value)">${db.classes.map(c=>`<option value="${c.id}" ${c.id===e.c?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+  return `<div class="row"><h1 class="sp">تقييم حصة</h1><button class="btn sm" onclick="saveEval()">💾 حفظ الحصة</button></div><div class="card"><label>الصف</label><select onchange="setE('c',this.value)">${db.classes.map(c=>`<option value="${c.id}" ${c.id===e.c?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
   <label>المادة</label><select onchange="setE('s',this.value)">${subs.map(x=>`<option value="${x.id}" ${x.id===e.s?'selected':''}>${esc(x.name)}</option>`).join('')||'<option value="">لا توجد مواد لهذا الصف</option>'}</select>
   <div class="row"><div class="sp"><label>التاريخ</label><input type="date" value="${e.d}" onchange="setE('d',this.value)"></div><div class="sp"><label>الحصة</label><select onchange="setE('p',+this.value)">${[1,2,3,4,5,6,7].map(x=>`<option value="${x}" ${x===e.p?'selected':''}>${x}</option>`).join('')}</select></div></div>
   <label>موضوع الحصة (اختياري)</label><input placeholder="مثال: القسمة على رقمين" value="${esc(S.topic||'')}" oninput="S.topic=this.value" style="margin-bottom:0"></div>
   ${db.evals[k]?'<p class="mut">هذه الحصة محفوظة سابقاً، يمكنك تعديلها.</p>':''}
-  <div class="row"><button class="btn sec sm" onclick="allGood()">تعيين الكل ممتاز</button><button class="btn sec sm" onclick="allPresent()">تعيين الكل حاضر</button><span class="mut">${done} من ${sts.length} مقيَّمون</span></div><div style="height:8px"></div>
-  ${sts.map(s=>{const r=S.rows[s.id]||{},at=r.att||'p',c=r.c||{};return `<div class="card"><div class="row">${av(s)}<b class="sp">${esc(s.name)}</b></div>
+  <div class="row"><button class="btn sec sm" onclick="allGood()">تعيين الكل ممتاز</button><button class="btn sec sm" onclick="allPresent()">تعيين الكل حاضر</button><span class="mut">${done} من ${sts.length} مقيَّمون</span></div>
+  <input id="eq" placeholder="بحث عن طالب بالاسم أو الرقم الأكاديمي" value="${esc(S.eq||'')}" oninput="S.eq=this.value;renderEvalList()">
+  <div id="evl">${evalListHtml(sts)}</div>
+  <button class="btn" style="width:100%;padding:14px" onclick="saveEval()">حفظ الحصة</button>`;
+}
+function evalListHtml(sts){
+  const q=(S.eq||'').trim();
+  const list=q?sts.filter(s=>s.name.includes(q)||s.num.includes(q)):sts;
+  return list.map(s=>{const r=S.rows[s.id]||{},at=r.att||'p',c=r.c||{};return `<div class="card"><div class="row">${av(s)}<b class="sp">${esc(s.name)}</b></div>
   <div class="rb" style="grid-template-columns:repeat(4,1fr)">${['p','l','e','a'].map(ak=>`<button class="${ATT[ak][1]} ${at===ak?'on':''}" onclick="setAtt('${s.id}','${ak}')">${ATT[ak][0]}</button>`).join('')}</div>
   <div style="${at==='a'?'opacity:.45':''}">${CRIT.map(cr=>`<div class="mut" style="font-size:12px;margin-top:6px">${cr[1]}</div><div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c[cr[0]]===v?'on':''}" onclick="rateC('${s.id}','${cr[0]}',${v})">${RT[v][0]}</button>`).join('')}</div>`).join('')}</div>
   <div class="qnwrap">${QN.map(t=>{const active=(r.n||'').split('، ').includes(t);return `<button type="button" class="${active?'on':''}" onclick="addQN('${s.id}',this)" data-t="${esc(t)}">${esc(t)}</button>`}).join('')}</div>
-  <input placeholder="ملاحظة (اختياري)" value="${esc(r.n||'')}" oninput="note('${s.id}',this.value)" style="margin-bottom:0"></div>`}).join('')||'<p class="mut">لا يوجد طلاب في هذا الصف.</p>'}
-  <button class="btn" style="width:100%;padding:14px" onclick="saveEval()">حفظ الحصة</button>`;
+  <input placeholder="ملاحظة (اختياري)" value="${esc(r.n||'')}" oninput="note('${s.id}',this.value)" style="margin-bottom:0"></div>`}).join('')||'<p class="mut">لا يوجد طلاب مطابقون.</p>';
 }
-function setE(k,v){S.e[k]=v;if(k==='c')S.e.s='';render()}
+function renderEvalList(){
+  const sts=db.students.filter(x=>x.classId===S.e.c);
+  document.getElementById('evl').innerHTML=evalListHtml(sts);
+}
+function setE(k,v){S.e[k]=v;if(k==='c'){S.e.s='';S.eq=''}render()}
 function rateC(id,key,v){const row=S.rows[id]=S.rows[id]||{};row.c=row.c||{};row.c[key]=v;render()}
 function note(id,t){S.rows[id]=Object.assign(S.rows[id]||{},{n:t})}
 function addQN(id,btn){
@@ -394,7 +404,7 @@ function critAvg(h,key){const v=h.map(x=>x.c&&x.c[key]).filter(Boolean);return v
 function attBreak(ah){const ac={p:0,l:0,e:0,a:0};ah.forEach(x=>ac[x.att]++);return{ac,an:ah.length||1}}
 function baseCompare(a,level){const base=LV[level][1];return !a?'لا توجد تقييمات بعد':a>base+.3?'أعلى من المستوى المبدئي ↑':a<base-.3?'أقل من المستوى المبدئي ↓':'قريب من المستوى المبدئي'}
 function reportsV(){
-  const f=S.f,list=db.students.filter(s=>(!f.c||s.classId===f.c)&&(!f.st||s.id===f.st));
+  const f=S.f,tab=S.rtab||'students',list=db.students.filter(s=>(!f.c||s.classId===f.c)&&(!f.st||s.id===f.st));
   const rows=list.map(s=>{
     const h=hist(s.id,f),ah=attHist(s.id,{s:f.s,from:f.from,to:f.to}),{ac,an}=attBreak(ah);
     return{s,h,ah,ac,an,a:avg(h),crAvgs:CRIT.map(cr=>({label:cr[1],v:critAvg(h,cr[0])}))};
@@ -402,19 +412,26 @@ function reportsV(){
   const ids=new Set(list.map(s=>s.id)),alerts=alertList().filter(x=>ids.has(x.s.id)),alertIds=new Set(alerts.map(x=>x.s.id));
   const allH=rows.flatMap(x=>x.h),allAtt=rows.flatMap(x=>x.ah);
   const classAvg=avg(allH),presentPct=allAtt.length?Math.round(allAtt.filter(x=>x.att==='p').length/allAtt.length*100):null;
+  const sessions=sessionsList(f);
+  const plan=lessonPlanData(f);
   const opt=(a,v,t)=>`<option value="${v}" ${f[a]===v?'selected':''}>${t}</option>`;
-  return `<h1>التقارير</h1><div class="card noprint"><div class="row"><div class="sp"><label>الصف</label><select onchange="S.f.c=this.value;S.f.st='';render()"><option value="">الكل</option>${db.classes.map(c=>opt('c',c.id,esc(c.name))).join('')}</select></div>
-  <div class="sp"><label>المادة</label><select onchange="S.f.s=this.value;render()"><option value="">الكل</option>${db.subjects.map(c=>opt('s',c.id,esc(c.name))).join('')}</select></div></div>
-  <label>الطالب</label><select onchange="S.f.st=this.value;render()"><option value="">الكل</option>${db.students.filter(s=>!f.c||s.classId===f.c).map(c=>opt('st',c.id,esc(c.name))).join('')}</select>
-  <div class="row"><div class="sp"><label>من</label><input type="date" value="${f.from||''}" onchange="S.f.from=this.value;render()"></div><div class="sp"><label>إلى</label><input type="date" value="${f.to||''}" onchange="S.f.to=this.value;render()"></div></div>
-  <div class="row"><button class="btn sec sm sp" onclick="print()">طباعة / حفظ PDF</button><button class="btn sec sm sp" onclick="exportReport()">تصدير إكسل</button></div></div>
-  <div class="card"><b>ملخص عام</b><div class="row" style="margin-top:8px;text-align:center">
-  <div class="sp"><div style="font-size:22px;font-weight:800">${list.length}</div><div class="mut" style="font-size:12px">طالب</div></div>
-  <div class="sp"><div style="font-size:22px;font-weight:800">${allH.length}</div><div class="mut" style="font-size:12px">تقييم</div></div>
-  <div class="sp"><div style="font-size:22px;font-weight:800">${classAvg?classAvg.toFixed(1):'—'}</div><div class="mut" style="font-size:12px">متوسط عام /4</div></div>
-  <div class="sp"><div style="font-size:22px;font-weight:800">${presentPct!==null?presentPct+'%':'—'}</div><div class="mut" style="font-size:12px">نسبة الحضور</div></div>
-  </div></div>
-  <h2>تنبيهات المتابعة</h2>${alerts.map(x=>`<div class="card row" onclick="S.pid='${x.s.id}';go('profile')" style="cursor:pointer;border-color:var(--r)">${av(x.s)}<div class="sp"><b>${esc(x.s.name)}</b><div class="mut">تكرر «ضعيف» أو «يحتاج متابعة» في آخر 5 تقييمات</div></div></div>`).join('')||'<p class="mut">لا توجد تنبيهات حالياً.</p>'}
+  const body=tab==='sessions'
+  ?`<h2>سجل الحصص ومواضيعها</h2>${sessions.map(e=>{
+      const rv=Object.values(e.rows),rated=rv.filter(r=>rowScore(r)!==null).length,present=rv.filter(r=>(r.att||'p')==='p').length;
+      return `<div class="card"><div class="row"><b class="sp">${e.d} · حصة ${e.p}</b><span class="mut" style="font-size:12px">${esc(cn(e.c))} · ${esc(sn(e.s))}</span></div>
+      <div class="mut" style="margin-top:4px">موضوع الحصة: ${e.topic?`<b style="color:var(--tx)">${esc(e.topic)}</b>`:'<span>لم يُسجَّل</span>'}</div>
+      <div class="mut" style="font-size:12px;margin-top:4px">${rated} من ${rv.length} مُقيَّمون تفصيلياً · ${present} حاضر</div></div>`;
+    }).join('')||'<p class="mut">لا توجد حصص مسجّلة في هذه الفترة.</p>'}`
+  :tab==='plan'
+  ?Object.keys(plan).length?Object.keys(plan).map(sid=>{
+      const arr=plan[sid];
+      return `<h2>${esc(sn(sid))} <span class="mut" style="font-size:13px;font-weight:400">(${arr.length} درساً مسجّلاً)</span></h2>
+      <div class="card sc"><table><tr><th>#</th><th>التاريخ</th><th>الحصة</th><th>الصف</th><th>الموضوع</th></tr>
+      ${arr.map((e,i)=>`<tr><td>${i+1}</td><td>${e.d}</td><td>${e.p}</td><td>${esc(cn(e.c))}</td><td>${esc(e.topic)}</td></tr>`).join('')}
+      </table></div>`;
+    }).join('')
+    :'<p class="mut">لا توجد حصص لها "موضوع" مسجَّل بعد في هذه الفترة. سجّل موضوع الحصة من شاشة "تقييم حصة" ليظهر هنا.</p>'
+  :`<h2>تنبيهات المتابعة</h2>${alerts.map(x=>`<div class="card row" onclick="S.pid='${x.s.id}';go('profile')" style="cursor:pointer;border-color:var(--r)">${av(x.s)}<div class="sp"><b>${esc(x.s.name)}</b><div class="mut">تكرر «ضعيف» أو «يحتاج متابعة» في آخر 5 تقييمات</div></div></div>`).join('')||'<p class="mut">لا توجد تنبيهات حالياً.</p>'}
   <h2>إحصائية تفصيلية لكل طالب</h2>${rows.map(x=>`<div class="card" onclick="S.pid='${x.s.id}';go('profile')" style="cursor:pointer;${alertIds.has(x.s.id)?'border-color:var(--r)':''}">
   <div class="row">${av(x.s)}<div class="sp"><b>${esc(x.s.name)}</b><div class="mut" style="font-size:12px">${esc(x.s.num)} · ${esc(cn(x.s.classId))} · المستوى المبدئي: ${LV[x.s.level][0]}</div></div></div>
   <div class="mut" style="margin:6px 0 4px">${x.h.length} تقييم · المتوسط العام ${x.a?x.a.toFixed(1):'—'} من 4 · ${baseCompare(x.a,x.s.level)}</div>
@@ -422,6 +439,48 @@ function reportsV(){
   ${x.crAvgs.some(c=>c.v!==null)?`<div class="mut" style="font-size:13px;margin-top:6px">${x.crAvgs.filter(c=>c.v!==null).map(c=>`${c.label} ${c.v.toFixed(1)}/4`).join(' · ')}</div>`:''}
   ${x.ah.length?`<div class="mut" style="font-size:12px;margin-top:4px">الحضور: ${['p','l','e','a'].map(k=>`${ATT[k][0]} ${Math.round(x.ac[k]/x.an*100)}%`).join(' · ')}</div>`:''}
   </div>`).join('')||'<p class="mut">لا توجد بيانات.</p>'}`;
+  return `<h1>التقارير</h1>
+  <div class="row noprint"><button class="btn ${tab==='students'?'':'sec'} sm sp" onclick="S.rtab='students';render()">📊 تقارير الطلاب</button><button class="btn ${tab==='sessions'?'':'sec'} sm sp" onclick="S.rtab='sessions';render()">🗒️ سجل الحصص</button><button class="btn ${tab==='plan'?'':'sec'} sm sp" onclick="S.rtab='plan';render()">📘 خطة الدروس</button></div>
+  <div class="card noprint"><div class="row"><div class="sp"><label>الصف</label><select onchange="S.f.c=this.value;S.f.st='';render()"><option value="">الكل</option>${db.classes.map(c=>opt('c',c.id,esc(c.name))).join('')}</select></div>
+  <div class="sp"><label>المادة</label><select onchange="S.f.s=this.value;render()"><option value="">الكل</option>${db.subjects.map(c=>opt('s',c.id,esc(c.name))).join('')}</select></div></div>
+  ${tab==='students'?`<label>الطالب</label><select onchange="S.f.st=this.value;render()"><option value="">الكل</option>${db.students.filter(s=>!f.c||s.classId===f.c).map(c=>opt('st',c.id,esc(c.name))).join('')}</select>`:''}
+  <div class="row"><div class="sp"><label>من</label><input type="date" value="${f.from||''}" onchange="S.f.from=this.value;render()"></div><div class="sp"><label>إلى</label><input type="date" value="${f.to||''}" onchange="S.f.to=this.value;render()"></div></div>
+  <div class="row"><button class="btn sec sm sp" onclick="print()">طباعة / حفظ PDF</button><button class="btn sec sm sp" onclick="${tab==='sessions'?'exportSessions':tab==='plan'?'exportPlan':'exportReport'}()">تصدير إكسل</button></div></div>
+  ${tab==='students'?`<div class="card"><b>ملخص عام</b><div class="row" style="margin-top:8px;text-align:center">
+  <div class="sp"><div style="font-size:22px;font-weight:800">${list.length}</div><div class="mut" style="font-size:12px">طالب</div></div>
+  <div class="sp"><div style="font-size:22px;font-weight:800">${allH.length}</div><div class="mut" style="font-size:12px">تقييم</div></div>
+  <div class="sp"><div style="font-size:22px;font-weight:800">${classAvg?classAvg.toFixed(1):'—'}</div><div class="mut" style="font-size:12px">متوسط عام /4</div></div>
+  <div class="sp"><div style="font-size:22px;font-weight:800">${presentPct!==null?presentPct+'%':'—'}</div><div class="mut" style="font-size:12px">نسبة الحضور</div></div>
+  </div></div>`:tab==='sessions'?`<div class="card"><b>ملخص عام</b><div class="mut" style="margin-top:6px">${sessions.length} حصة مسجّلة · ${sessions.filter(e=>e.topic).length} منها بموضوع مسجّل</div></div>`
+  :`<div class="card"><b>ملخص عام</b><div class="mut" style="margin-top:6px">${Object.values(plan).flat().length} درساً مسجّلاً عبر ${Object.keys(plan).length} مادة</div></div>`}
+  ${body}`;
+}
+function lessonPlanData(f){
+  const sessions=sessionsList(f).filter(e=>e.topic&&e.topic.trim());
+  const bySub={};
+  sessions.forEach(e=>{(bySub[e.s]=bySub[e.s]||[]).push(e)});
+  Object.values(bySub).forEach(arr=>arr.sort((a,b)=>a.d===b.d?a.p-b.p:(a.d<b.d?-1:1)));
+  return bySub;
+}
+function exportPlan(){
+  if(typeof XLSX==='undefined')return toast('تعذر تحميل مكتبة الإكسل');
+  const plan=lessonPlanData(S.f);
+  const data=[['المادة','#','التاريخ','الحصة','الصف','الموضوع']];
+  Object.keys(plan).forEach(sid=>plan[sid].forEach((e,i)=>data.push([sn(sid),i+1,e.d,e.p,cn(e.c),e.topic])));
+  const ws=XLSX.utils.aoa_to_sheet(data),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'خطة الدروس');
+  saveBlob(new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'خطة_الدروس.xlsx');
+}
+function sessionsList(f){
+  return Object.values(db.evals).filter(e=>(!f.c||e.c===f.c)&&(!f.s||e.s===f.s)&&(!f.from||e.d>=f.from)&&(!f.to||e.d<=f.to))
+    .sort((a,b)=>a.d===b.d?b.p-a.p:(a.d<b.d?1:-1));
+}
+function exportSessions(){
+  if(typeof XLSX==='undefined')return toast('تعذر تحميل مكتبة الإكسل');
+  const sessions=sessionsList(S.f);
+  const data=[['التاريخ','الحصة','الصف','المادة','موضوع الحصة','عدد المُقيَّمين','عدد الحاضرين']];
+  sessions.forEach(e=>{const rv=Object.values(e.rows);data.push([e.d,e.p,cn(e.c),sn(e.s),e.topic||'',rv.filter(r=>rowScore(r)!==null).length,rv.filter(r=>(r.att||'p')==='p').length])});
+  const ws=XLSX.utils.aoa_to_sheet(data),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'سجل الحصص');
+  saveBlob(new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'سجل_الحصص.xlsx');
 }
 function exportReport(){
   if(typeof XLSX==='undefined')return toast('تعذر تحميل مكتبة الإكسل');
