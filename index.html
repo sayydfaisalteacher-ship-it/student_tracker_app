@@ -359,10 +359,12 @@ function evalV(){
   const sts=db.students.filter(x=>x.classId===e.c),k=[e.c,e.s,e.d,e.p].join('|');
   if(S.k!==k){S.k=k;S.rows=JSON.parse(JSON.stringify((db.evals[k]||{}).rows||{}));S.topic=(db.evals[k]||{}).topic||''}
   const done=Object.values(S.rows).filter(r=>rowScore(r)!==null).length;
+  const sched=e.s?isScheduled(e.s,e.d,e.p):true;
   return `<div class="row"><h1 class="sp">تقييم حصة</h1><button class="btn sm" onclick="saveEval()">💾 حفظ الحصة</button></div><div class="card"><label>الصف</label><select onchange="setE('c',this.value)">${db.classes.map(c=>`<option value="${c.id}" ${c.id===e.c?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
   <label>المادة</label><select onchange="setE('s',this.value)">${subs.map(x=>`<option value="${x.id}" ${x.id===e.s?'selected':''}>${esc(x.name)}</option>`).join('')||'<option value="">لا توجد مواد لهذا الصف</option>'}</select>
   <div class="row"><div class="sp"><label>التاريخ</label><input type="date" value="${e.d}" onchange="setE('d',this.value)"></div><div class="sp"><label>الحصة</label><select onchange="setE('p',+this.value)">${[1,2,3,4,5,6,7].map(x=>`<option value="${x}" ${x===e.p?'selected':''}>${x}</option>`).join('')}</select></div></div>
   <label>موضوع الحصة (اختياري)</label><input placeholder="مثال: القسمة على رقمين" value="${esc(S.topic||'')}" oninput="S.topic=this.value" style="margin-bottom:0"></div>
+  ${sched?'':`<div class="card" style="border-color:var(--o)">⚠️ تنبيه: هذه المادة غير مجدولة في هذا التاريخ (${DAYS[weekdayOf(e.d)]||''}) على الحصة ${e.p} حسب الجدول الأسبوعي. يمكنك الحفظ رغم ذلك (مثلاً لحصة تعويضية)، لكن تأكد أن هذا مقصود.</div>`}
   ${(()=>{const pr=subjectProgress(e.s,e.c);if(!pr)return '';return `<div class="card"><b>📘 تقدّم المنهج</b><div class="bar" style="margin:6px 0"><div style="width:${Math.min(100,pr.taught/pr.total*100)}%;background:var(--pri)"></div></div><div class="mut" style="font-size:13px">تم توثيق ${pr.taught} من ${pr.total} درساً</div>${pr.next?`<div class="mut" style="margin-top:6px">الدرس المتوقع التالي حسب الخطة: <b style="color:var(--tx)">${esc(pr.next)}</b></div><button class="btn sec sm" style="margin-top:6px" data-next="${esc(pr.next)}" onclick="S.topic=this.getAttribute('data-next');render()">استخدام هذا كموضوع الحصة</button>`:'<div class="mut" style="margin-top:6px">✅ تم توثيق كل دروس الخطة المقررة</div>'}</div>`;})()}
   ${db.evals[k]?'<p class="mut">هذه الحصة محفوظة سابقاً، يمكنك تعديلها.</p>':''}
   <div class="row"><button class="btn sec sm" onclick="allGood()">تعيين الكل ممتاز</button><button class="btn sec sm" onclick="allPresent()">تعيين الكل حاضر</button><span class="mut">${done} من ${sts.length} مقيَّمون</span></div>
@@ -435,6 +437,13 @@ function attHist(id,f){
 const avg=h=>h.length?h.reduce((a,x)=>a+x.score,0)/h.length:0;
 function alertList(){return db.students.map(s=>({s,h:hist(s.id,{})})).filter(x=>{const l=x.h.slice(-5);return l.filter(y=>Math.round(y.score)<=2).length>=3})}
 function isHoliday(d){return (db.holidays||[]).includes(d)}
+function weekdayOf(dateStr){const[y,m,d]=dateStr.split('-').map(Number);return new Date(y,m-1,d).getDay()}
+function isScheduled(subId,dateStr,period){
+  const sub=db.subjects.find(x=>x.id===subId);if(!sub)return false;
+  if(!sub.slots||!sub.slots.length)return true; // لا جدول مُعرَّف لهذه المادة بعد، لا نمنع التقييم
+  const wd=weekdayOf(dateStr);
+  return sub.slots.some(sl=>sl.d===wd&&sl.p===period);
+}
 function expectedSessionsToday(){
   if(isHoliday(today()))return [];
   const di=new Date().getDay(),out=[];
