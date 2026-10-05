@@ -76,10 +76,11 @@ function seed(){
   const n=[['أحمد علي','1001','adv'],['سارة محمد','1002','mid'],['خالد عمر','1003','mid'],['نور حسن','1004','low'],['يوسف سعد','1005','adv']];
   return{classes:[{id:c,name:'الصف الخامس - أ'}],
    subjects:[{id:m,name:'رياضيات',classIds:[c],slots:[{d:0,p:2},{d:2,p:1},{d:4,p:3}],curriculum:['الفصل المشترك الأكبر','القسمة على رقمين','الكسور العشرية','المعادلات البسيطة']},{id:s,name:'علوم',classIds:[c],slots:[{d:1,p:2},{d:3,p:4}],curriculum:['دورة الماء','حالات المادة','النظام الشمسي']}],
-   students:n.map((x,i)=>({id:'t'+i,name:x[0],num:x[1],classId:c,level:x[2],photo:''})),evals:{}};
+   students:n.map((x,i)=>({id:'t'+i,name:x[0],num:x[1],classId:c,level:x[2],photo:''})),evals:{},holidays:[]};
 }
 let db=null;try{db=JSON.parse(localStorage.getItem('sp1')||'null')}catch(e){}
 if(!db)db=seed();
+if(!db.holidays)db.holidays=[];
 try{const th=localStorage.getItem('sp1-theme');if(th)document.documentElement.dataset.theme=th}catch(e){}
 function toggleTheme(){
   const cur=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
@@ -96,6 +97,7 @@ let V='home',S={f:{}};
 const NAV=[['home','🏠','الرئيسية'],['eval','✅','تقييم'],['students','👥','الطلاب'],['classes','🏫','الصفوف'],['subjects','📚','المواد'],['reports','📊','التقارير']];
 function go(v){
   if(v==='todayEval'){
+    if(isHoliday(today()))toast('تنبيه: اليوم مُسجَّل كعطلة دراسية 📅');
     const di=new Date().getDay(),hit=db.subjects.map(s=>({s,sl:s.slots.find(x=>x.d===di)})).find(x=>x.sl);
     S.e={c:hit?hit.s.classIds[0]:(db.classes[0]||{}).id||'',s:hit?hit.s.id:'',d:today(),p:hit?hit.sl.p:1};v='eval';
   }
@@ -117,14 +119,16 @@ function err(m){document.getElementById('er').textContent=m}
 
 /* ===== الرئيسية ===== */
 function home(){
-  const alerts=alertList(),notDone=classesNotEvaluatedToday(),gaps=topicGaps();
+  const alerts=alertList(),notDone=classesNotEvaluatedToday(),gaps=topicGaps(),hol=isHoliday(today()),missed=missedToday();
   const th=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
   return `<div class="row"><h1 class="sp">متابعة أداء الطلاب</h1><button class="btn sec sm" onclick="toggleTheme()">${th==='dark'?'☀️ فاتح':'🌙 داكن'}</button></div>
+  ${hol?'<div class="card" style="border-color:var(--pri);text-align:center">📅 اليوم مُسجَّل كعطلة دراسية</div>':''}
   <div class="row" style="margin-bottom:10px">
   <div class="card sp" style="text-align:center;border-color:${alerts.length?'var(--r)':'var(--bd)'}" onclick="go('reports')"><div style="font-size:26px;font-weight:800">${alerts.length}</div><div class="mut">تنبيه متابعة</div></div>
   <div class="card sp" style="text-align:center" onclick="go('eval')"><div style="font-size:26px;font-weight:800">${notDone.length}</div><div class="mut">صف لم يُقيَّم اليوم</div></div>
   <div class="card sp" style="text-align:center;border-color:${gaps.length?'var(--o)':'var(--bd)'}" onclick="S.rtab='plan';go('reports')"><div style="font-size:26px;font-weight:800">${gaps.length}</div><div class="mut">توثيق متأخر</div></div>
   </div>
+  ${missed.length?`<h2>⏰ متابعة آخر النهار — حصص لم تُقيَّم بعد</h2>${missed.map(x=>`<div class="card row" onclick="goToSession('${x.c}','${x.s}',${x.p})" style="cursor:pointer;border-color:var(--o)"><div class="sp"><b>${esc(cn(x.c))}</b> · ${esc(sn(x.s))} · حصة ${x.p}</div><span class="mut">قيّم الآن ←</span></div>`).join('')}`:''}
   <div class="grid">
   <button class="tile main" onclick="go('todayEval')"><b>✅</b>تقييم حصة اليوم</button>
   ${[['students','👥','الطلاب'],['classes','🏫','الصفوف'],['subjects','📚','المواد'],['reports','📊','التقارير'],['backup','💾','نسخ احتياطي']].map(x=>`<button class="tile" onclick="go('${x[0]}')"><b>${x[1]}</b>${x[2]}</button>`).join('')}</div>
@@ -155,8 +159,19 @@ function subjectsV(){
   const grid=[1,2,3,4,5,6,7].map(p=>`<tr><td>${p}</td>${DAYS.map((d,i)=>`<td>${db.subjects.filter(s=>s.slots.some(x=>x.d===i&&x.p===p)).map(s=>esc(s.name)).join('، ')}</td>`).join('')}</tr>`).join('');
   return `<h1>المواد</h1><button class="btn" onclick="subForm()">+ إضافة مادة</button><div style="height:10px"></div>`+
   db.subjects.map(s=>`<div class="card row"><div class="sp"><b>${esc(s.name)}</b><div class="mut">${s.classIds.map(cn).join('، ')||'غير مرتبطة بصف'} · ${s.slots.length} حصص أسبوعياً</div></div><button class="btn sec sm" onclick="subForm('${s.id}')">تعديل</button><button class="btn del sm" onclick="delSub('${s.id}')">حذف</button></div>`).join('')+
-  `<h2>الجدول الأسبوعي</h2><div class="card sc"><table><tr><th>الحصة</th>${DAYS.map(d=>`<th>${d}</th>`).join('')}</tr>${grid}</table></div>`;
+  `<h2>الجدول الأسبوعي</h2><div class="card sc"><table><tr><th>الحصة</th>${DAYS.map(d=>`<th>${d}</th>`).join('')}</tr>${grid}</table></div>
+  <h2>📅 العطل والإجازات الدراسية</h2><div class="card"><p class="mut">أيام تُستثنى تلقائياً من تنبيهات "لم يُقيَّم اليوم" و"الحصص الفائتة" في الرئيسية.</p>
+  <div class="row"><input type="date" id="hd" style="flex:2"><button class="btn sm sp" onclick="addHoliday()">+ إضافة</button></div>
+  ${(db.holidays||[]).slice().sort().map(d=>`<div class="row" style="margin-top:6px"><span class="sp">${d}</span><button class="btn del sm" onclick="delHoliday('${d}')">حذف</button></div>`).join('')||'<p class="mut" style="margin-top:6px">لا توجد عطل مُسجَّلة.</p>'}
+  </div>`;
 }
+function addHoliday(){
+  const v=document.getElementById('hd').value;if(!v)return toast('اختر تاريخاً أولاً');
+  if(!db.holidays)db.holidays=[];
+  if(!db.holidays.includes(v))db.holidays.push(v);
+  save();render();
+}
+function delHoliday(d){db.holidays=(db.holidays||[]).filter(x=>x!==d);save();render()}
 function slotRow(d,p){
   return `<div class="row sl"><select style="flex:2">${DAYS.map((x,i)=>`<option value="${i}" ${i==d?'selected':''}>${x}</option>`).join('')}</select><select style="flex:1">${[1,2,3,4,5,6,7].map(x=>`<option value="${x}" ${x==p?'selected':''}>حصة ${x}</option>`).join('')}</select><button class="btn del sm" onclick="this.parentNode.remove()">×</button></div>`;
 }
@@ -419,7 +434,23 @@ function attHist(id,f){
 }
 const avg=h=>h.length?h.reduce((a,x)=>a+x.score,0)/h.length:0;
 function alertList(){return db.students.map(s=>({s,h:hist(s.id,{})})).filter(x=>{const l=x.h.slice(-5);return l.filter(y=>Math.round(y.score)<=2).length>=3})}
-function classesNotEvaluatedToday(){const t=today(),done=new Set(Object.values(db.evals).filter(e=>e.d===t).map(e=>e.c));return db.classes.filter(c=>!done.has(c.id))}
+function isHoliday(d){return (db.holidays||[]).includes(d)}
+function expectedSessionsToday(){
+  if(isHoliday(today()))return [];
+  const di=new Date().getDay(),out=[];
+  db.subjects.forEach(sub=>sub.slots.filter(sl=>sl.d===di).forEach(sl=>sub.classIds.forEach(cid=>out.push({c:cid,s:sub.id,p:sl.p}))));
+  return out;
+}
+function missedToday(){
+  const t=today();
+  return expectedSessionsToday().filter(x=>!db.evals[[x.c,x.s,t,x.p].join('|')]);
+}
+function classesNotEvaluatedToday(){
+  if(isHoliday(today()))return [];
+  const ids=new Set(missedToday().map(x=>x.c));
+  return db.classes.filter(c=>ids.has(c.id));
+}
+function goToSession(c,s,p){S.e={c,s,d:today(),p};V='eval';render();scrollTo(0,0)}
 function stats(h){const c={1:0,2:0,3:0,4:0};h.forEach(x=>c[Math.min(4,Math.max(1,Math.round(x.score)))]++);return c}
 function bar(h){const c=stats(h),n=h.length||1;return `<div class="bar">${[4,3,2,1].map(v=>`<div style="width:${c[v]/n*100}%;background:var(--${RT[v][1]})"></div>`).join('')}</div><div class="mut" style="font-size:12px">${[4,3,2,1].map(v=>`${RT[v][0]} ${Math.round(c[v]/n*100)}%`).join(' · ')}</div>`}
 function critAvg(h,key){const v=h.map(x=>x.c&&x.c[key]).filter(Boolean);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null}
@@ -593,7 +624,7 @@ function importBackupFile(inp){
   r.onload=(e)=>{
     let d;try{d=JSON.parse(e.target.result);if(!d.classes||!d.students||!d.subjects||!d.evals)throw 0}
     catch(x){return err('الملف غير صالح. تأكد أنه ملف نسخة احتياطية صحيح بصيغة JSON')}
-    ask('استبدال البيانات الحالية بالنسخة المستوردة؟',()=>{db=d;save();toast('تم الاستيراد ✓');go('home')});
+    ask('استبدال البيانات الحالية بالنسخة المستوردة؟',()=>{db=d;if(!db.holidays)db.holidays=[];save();toast('تم الاستيراد ✓');go('home')});
   };
   r.onerror=()=>err('تعذّرت قراءة الملف');
   r.readAsText(f);
