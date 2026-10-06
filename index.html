@@ -283,13 +283,18 @@ function delStu(id){ask('حذف الطالب وكل تقييماته؟',()=>{db.
 /* ===== استيراد من إكسل ===== */
 async function getDL(){
   if(window._dl!==undefined)return window._dl;
-  try{window._dl=await claude.use('downloads')}catch(e){window._dl=null}
+  try{window._dl=(typeof claude!=='undefined')?await claude.use('downloads'):null}catch(e){window._dl=null}
   return window._dl;
 }
 async function saveBlob(blob,filename){
   const d=await getDL();
   if(d){try{await d.save({filename,data:blob});return true}catch(e){}}
-  toast('لا يمكن تنزيل الملفات من هذا العارض، افتح النسخة المنشورة');return false;
+  try{
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    return true;
+  }catch(e){toast('تعذّر تنزيل الملف في هذا المتصفح');return false}
 }
 function downloadTemplate(){
   if(typeof XLSX==='undefined')return toast('تعذر تحميل مكتبة الإكسل، تحقق من الاتصال');
