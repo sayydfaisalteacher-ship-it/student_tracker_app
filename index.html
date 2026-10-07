@@ -423,6 +423,7 @@ function evalV(){
   ${(()=>{const pr=subjectProgress(e.s,e.c);if(!pr)return '';return `<div class="card"><b>📘 تقدّم المنهج</b><div class="bar" style="margin:6px 0"><div style="width:${Math.min(100,pr.taught/pr.total*100)}%;background:var(--pri)"></div></div><div class="mut" style="font-size:13px">تم توثيق ${pr.taught} من ${pr.total} درساً</div>${pr.next?`<div class="mut" style="margin-top:6px">الدرس المتوقع التالي حسب الخطة: <b style="color:var(--tx)">${esc(pr.next)}</b>${pr.nextDate?` <span style="font-size:12px">(موعده المقترح: ${pr.nextDate}${pr.nextDate<today()?' — متأخر ⚠️':''})</span>`:''}</div><button class="btn sec sm" style="margin-top:6px" data-next="${esc(pr.next)}" onclick="S.topic=this.getAttribute('data-next');render()">استخدام هذا كموضوع الحصة</button>`:'<div class="mut" style="margin-top:6px">✅ تم توثيق كل دروس الخطة المقررة</div>'}</div>`;})()}
   ${db.evals[k]?'<p class="mut">هذه الحصة محفوظة سابقاً، يمكنك تعديلها.</p>':''}
   <div class="row"><button class="btn sec sm" onclick="allGood()">تعيين الكل ممتاز</button><button class="btn sec sm" onclick="allPresent()">تعيين الكل حاضر</button><span class="mut">${done} من ${sts.length} مقيَّمون</span></div>
+  <button class="btn sm" style="width:100%;margin-bottom:8px;background:linear-gradient(90deg,#8b5cf6,#ec4899);border:0" onclick="pickRandomStudent()">🎲 اختيار طالب عشوائي للمشاركة</button>
   <input id="eq" placeholder="بحث عن طالب بالاسم أو الرقم الأكاديمي" value="${esc(S.eq||'')}" oninput="S.eq=this.value;renderEvalList()">
   <div id="evl">${evalListHtml(sts)}</div>
   <button class="btn" style="width:100%;padding:14px" onclick="saveEval()">حفظ الحصة</button>`;
@@ -441,6 +442,25 @@ function renderEvalList(){
   document.getElementById('evl').innerHTML=evalListHtml(sts);
 }
 function setE(k,v){S.e[k]=v;if(k==='c'){S.e.s='';S.eq=''}render()}
+function pickRandomStudent(){
+  const sts=db.students.filter(x=>x.classId===S.e.c);
+  if(!sts.length)return toast('لا يوجد طلاب في هذا الصف');
+  S.lastPick=sts[Math.floor(Math.random()*sts.length)].id;
+  renderRandomPick();
+}
+function renderRandomPick(){
+  const s=db.students.find(x=>x.id===S.lastPick);if(!s)return;
+  const r=S.rows[s.id]||{},c=r.c||{};
+  dlg(`<div style="text-align:center;padding:12px 0"><div class="mut" style="margin-bottom:6px">🎲 الطالب المختار</div><img src="${s.photo||NOAV}" class="av big" style="width:120px;height:120px"><h2 style="margin:14px 0 2px">${esc(s.name)}</h2><p class="mut">${esc(s.num)} · ${esc(cn(s.classId))}</p></div>
+  <div class="mut" style="font-size:13px;margin-bottom:4px">تقييم المشاركة الآن:</div>
+  <div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c.par===v?'on':''}" onclick="rateParticipation('${s.id}',${v})">${RT[v][0]}</button>`).join('')}</div>
+  <div class="row" style="margin-top:10px"><button class="btn sp" onclick="pickRandomStudent()">🎲 طالب آخر</button><button class="btn sec sp" onclick="closeD();render()">إغلاق</button></div>`);
+}
+function rateParticipation(id,v){
+  const row=S.rows[id]=S.rows[id]||{};row.c=row.c||{};row.c.par=v;
+  toast('تم تسجيل تقييم المشاركة ✓');
+  renderRandomPick();
+}
 function subjectProgress(sid,cid){
   const sub=db.subjects.find(x=>x.id===sid);if(!sub||!sub.curriculum||!sub.curriculum.length)return null;
   const cur=normCur(sub.curriculum);
