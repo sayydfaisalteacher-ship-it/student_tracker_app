@@ -184,17 +184,34 @@ function lessonTaughtMax(subId){
 }
 function lessonRow(t,d,status){
   const icon=status==='done'?'✅':status==='late'?'⚠️':'⬜';
-  return `<div class="lnwrap"><div class="row ln" style="align-items:center"><span style="width:20px;text-align:center" title="${status==='done'?'تم تدريسه':status==='late'?'تجاوز الموعد المقترح ولم يُدرَّس بعد':'قادم'}">${icon}</span><input class="lnt" value="${esc(t)}" placeholder="عنوان الدرس" style="flex:2;margin-bottom:0"><input class="lnd" type="date" value="${esc(d)}" style="flex:1;margin-bottom:0" onchange="checkLessonDate(this)"><button type="button" class="btn del sm" onclick="this.closest('.lnwrap').remove()">×</button></div><div class="dwarn mut" style="font-size:11px;color:var(--o);margin:0 0 6px"></div></div>`;
+  return `<div class="lnwrap"><div class="row ln" style="align-items:center"><span style="width:20px;text-align:center" title="${status==='done'?'تم تدريسه':status==='late'?'تجاوز الموعد المقترح ولم يُدرَّس بعد':'قادم'}">${icon}</span><input class="lnt" value="${esc(t)}" placeholder="عنوان الدرس" style="flex:2;margin-bottom:0"><input class="lnd" type="date" value="${esc(d)}" style="flex:1;margin-bottom:0" onchange="checkLessonDate(this)"><button type="button" class="btn sec sm" style="padding:4px 9px" onclick="moveLesson(this,-1)" title="تحريك لأعلى">↑</button><button type="button" class="btn sec sm" style="padding:4px 9px" onclick="moveLesson(this,1)" title="تحريك لأسفل">↓</button><button type="button" class="btn del sm" onclick="this.closest('.lnwrap').remove();refreshLessonIcons()">×</button></div><div class="dwarn mut" style="font-size:11px;color:var(--o);margin:0 0 6px"></div></div>`;
 }
-function addLesson(){document.getElementById('lns').insertAdjacentHTML('beforeend',lessonRow('','','upcoming'))}
+function addLesson(){document.getElementById('lns').insertAdjacentHTML('beforeend',lessonRow('','','upcoming'));refreshLessonIcons()}
+function moveLesson(btn,dir){
+  const wrap=btn.closest('.lnwrap');
+  if(dir===-1){const prev=wrap.previousElementSibling;if(prev)wrap.parentNode.insertBefore(wrap,prev)}
+  else{const next=wrap.nextElementSibling;if(next)wrap.parentNode.insertBefore(next,wrap)}
+  refreshLessonIcons();
+}
+function refreshLessonIcons(){
+  const lns=document.getElementById('lns');if(!lns)return;
+  const taughtMax=+lns.dataset.taught||0,t=today();
+  [...lns.children].forEach((wrap,i)=>{
+    const dateVal=wrap.querySelector('.lnd').value,span=wrap.querySelector('.ln > span');
+    const status=i<taughtMax?'done':(dateVal&&dateVal<t?'late':'upcoming');
+    span.textContent=status==='done'?'✅':status==='late'?'⚠️':'⬜';
+    span.title=status==='done'?'تم تدريسه':status==='late'?'تجاوز الموعد المقترح ولم يُدرَّس بعد':'قادم';
+  });
+}
 function currentSlotWeekdays(){return new Set([...document.querySelectorAll('.sl')].map(r=>+r.querySelectorAll('select')[0].value))}
 function checkLessonDate(inp){
   const warnEl=inp.closest('.lnwrap').querySelector('.dwarn'),val=inp.value;
-  if(!val){warnEl.textContent='';return}
+  if(!val){warnEl.textContent='';refreshLessonIcons();return}
   const allowed=currentSlotWeekdays();
-  if(!allowed.size){warnEl.textContent='';return}
+  if(!allowed.size){warnEl.textContent='';refreshLessonIcons();return}
   const wd=weekdayOf(val);
   warnEl.textContent=allowed.has(wd)?'':`⚠️ ${DAYS[wd]} ليس من أيام حصص هذه المادة في الجدول الأسبوعي`;
+  refreshLessonIcons();
 }
 function recheckAllLessonDates(){
   const lns=document.getElementById('lns');if(!lns)return;
@@ -212,7 +229,7 @@ function subForm(id){
   <label>خطة المنهج (اختياري) — عنوان الدرس وتاريخه المقترح، بالترتيب</label>
   <div class="mut" style="font-size:12px;margin-bottom:4px">✅ دُرِّس بالفعل (في صف واحد على الأقل) · ⚠️ تجاوز موعده المقترح ولم يُدرَّس · ⬜ قادم</div>
   <div class="mut" id="dayhint" style="font-size:12px;margin-bottom:6px"></div>
-  <div id="lns">${cur.map((x,i)=>lessonRow(x.t,x.d,i<taughtMax?'done':(x.d&&x.d<t?'late':'upcoming'))).join('')}</div>
+  <div id="lns" data-taught="${taughtMax}">${cur.map((x,i)=>lessonRow(x.t,x.d,i<taughtMax?'done':(x.d&&x.d<t?'late':'upcoming'))).join('')}</div>
   <button type="button" class="btn sec sm" onclick="addLesson()">+ درس</button>
   <div class="er" id="er"></div><div class="row"><button class="btn sp" onclick="saveSub('${id||''}')">حفظ</button><button class="btn sec sp" onclick="closeD()">إلغاء</button></div>`);
   recheckAllLessonDates();
