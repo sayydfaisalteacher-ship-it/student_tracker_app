@@ -445,16 +445,28 @@ function setE(k,v){S.e[k]=v;if(k==='c'){S.e.s='';S.eq=''}render()}
 function pickRandomStudent(){
   const sts=db.students.filter(x=>x.classId===S.e.c);
   if(!sts.length)return toast('لا يوجد طلاب في هذا الصف');
-  S.lastPick=sts[Math.floor(Math.random()*sts.length)].id;
+  if(!S.rndUsed)S.rndUsed={};
+  let used=S.rndUsed[S.e.c]||[];
+  let remaining=sts.filter(s=>!used.includes(s.id));
+  let newRound=false;
+  if(!remaining.length){used=[];remaining=sts.slice();newRound=sts.length>1}
+  const pick=remaining[Math.floor(Math.random()*remaining.length)];
+  used.push(pick.id);
+  S.rndUsed[S.e.c]=used;S.lastPick=pick.id;
+  if(newRound)toast('🔄 تم اختيار الجميع — بدأت جولة جديدة');
   renderRandomPick();
 }
+function resetRandomRound(){if(S.rndUsed)S.rndUsed[S.e.c]=[];toast('تمت إعادة ضبط الجولة');pickRandomStudent()}
 function renderRandomPick(){
   const s=db.students.find(x=>x.id===S.lastPick);if(!s)return;
   const r=S.rows[s.id]||{},c=r.c||{};
-  dlg(`<div style="text-align:center;padding:12px 0"><div class="mut" style="margin-bottom:6px">🎲 الطالب المختار</div><img src="${s.photo||NOAV}" class="av big" style="width:120px;height:120px"><h2 style="margin:14px 0 2px">${esc(s.name)}</h2><p class="mut">${esc(s.num)} · ${esc(cn(s.classId))}</p></div>
+  const sts=db.students.filter(x=>x.classId===S.e.c),used=(S.rndUsed&&S.rndUsed[S.e.c])||[],remainCount=Math.max(0,sts.length-used.length);
+  dlg(`<div style="text-align:center;padding:12px 0"><div class="mut" style="margin-bottom:6px">🎲 الطالب المختار</div><img src="${s.photo||NOAV}" class="av big" style="width:120px;height:120px"><h2 style="margin:14px 0 2px">${esc(s.name)}</h2><p class="mut">${esc(s.num)} · ${esc(cn(s.classId))}</p>
+  <p class="mut" style="font-size:12px">باقي ${remainCount} من ${sts.length} لم يُختاروا في هذه الجولة</p></div>
   <div class="mut" style="font-size:13px;margin-bottom:4px">تقييم المشاركة الآن:</div>
   <div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c.par===v?'on':''}" onclick="rateParticipation('${s.id}',${v})">${RT[v][0]}</button>`).join('')}</div>
-  <div class="row" style="margin-top:10px"><button class="btn sp" onclick="pickRandomStudent()">🎲 طالب آخر</button><button class="btn sec sp" onclick="closeD();render()">إغلاق</button></div>`);
+  <div class="row" style="margin-top:10px"><button class="btn sp" onclick="pickRandomStudent()">🎲 طالب آخر</button><button class="btn sec sp" onclick="closeD();render()">إغلاق</button></div>
+  <button class="btn sec sm" style="width:100%;margin-top:8px" onclick="resetRandomRound()">🔄 إعادة ضبط الجولة</button>`);
 }
 function rateParticipation(id,v){
   const row=S.rows[id]=S.rows[id]||{};row.c=row.c||{};row.c.par=v;
