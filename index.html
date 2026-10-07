@@ -75,7 +75,7 @@ function seed(){
   const c='c1',m='s1',s='s2';
   const n=[['أحمد علي','1001','adv'],['سارة محمد','1002','mid'],['خالد عمر','1003','mid'],['نور حسن','1004','low'],['يوسف سعد','1005','adv']];
   return{classes:[{id:c,name:'الصف الخامس - أ'}],
-   subjects:[{id:m,name:'رياضيات',classIds:[c],slots:[{d:0,p:2},{d:2,p:1},{d:4,p:3}],curriculum:['الفصل المشترك الأكبر','القسمة على رقمين','الكسور العشرية','المعادلات البسيطة']},{id:s,name:'علوم',classIds:[c],slots:[{d:1,p:2},{d:3,p:4}],curriculum:['دورة الماء','حالات المادة','النظام الشمسي']}],
+   subjects:[{id:m,name:'رياضيات',classIds:[c],slots:[{d:0,p:2},{d:2,p:1},{d:4,p:3}],curriculum:[{t:'الفصل المشترك الأكبر',d:''},{t:'القسمة على رقمين',d:''},{t:'الكسور العشرية',d:''},{t:'المعادلات البسيطة',d:''}]},{id:s,name:'علوم',classIds:[c],slots:[{d:1,p:2},{d:3,p:4}],curriculum:[{t:'دورة الماء',d:''},{t:'حالات المادة',d:''},{t:'النظام الشمسي',d:''}]}],
    students:n.map((x,i)=>({id:'t'+i,name:x[0],num:x[1],classId:c,level:x[2],photo:''})),evals:{},holidays:[]};
 }
 let db=null;try{db=JSON.parse(localStorage.getItem('sp1')||'null')}catch(e){}
@@ -173,20 +173,53 @@ function addHoliday(){
 }
 function delHoliday(d){db.holidays=(db.holidays||[]).filter(x=>x!==d);save();render()}
 function slotRow(d,p){
-  return `<div class="row sl"><select style="flex:2">${DAYS.map((x,i)=>`<option value="${i}" ${i==d?'selected':''}>${x}</option>`).join('')}</select><select style="flex:1">${[1,2,3,4,5,6,7].map(x=>`<option value="${x}" ${x==p?'selected':''}>حصة ${x}</option>`).join('')}</select><button class="btn del sm" onclick="this.parentNode.remove()">×</button></div>`;
+  return `<div class="row sl"><select style="flex:2" onchange="recheckAllLessonDates()">${DAYS.map((x,i)=>`<option value="${i}" ${i==d?'selected':''}>${x}</option>`).join('')}</select><select style="flex:1" onchange="recheckAllLessonDates()">${[1,2,3,4,5,6,7].map(x=>`<option value="${x}" ${x==p?'selected':''}>حصة ${x}</option>`).join('')}</select><button class="btn del sm" onclick="this.parentNode.remove();recheckAllLessonDates()">×</button></div>`;
 }
-function addSlot(){document.getElementById('sls').insertAdjacentHTML('beforeend',slotRow(0,1))}
+function addSlot(){document.getElementById('sls').insertAdjacentHTML('beforeend',slotRow(0,1));recheckAllLessonDates()}
+function normCur(arr){return(arr||[]).map(x=>typeof x==='string'?{t:x,d:''}:{t:x.t||'',d:x.d||''})}
+function lessonTaughtMax(subId){
+  const sub=db.subjects.find(x=>x.id===subId);if(!sub)return 0;let max=0;
+  (sub.classIds||[]).forEach(cid=>{const c=Object.values(db.evals).filter(e=>e.s===subId&&e.c===cid&&e.topic&&e.topic.trim()).length;if(c>max)max=c});
+  return max;
+}
+function lessonRow(t,d,status){
+  const icon=status==='done'?'✅':status==='late'?'⚠️':'⬜';
+  return `<div class="lnwrap"><div class="row ln" style="align-items:center"><span style="width:20px;text-align:center" title="${status==='done'?'تم تدريسه':status==='late'?'تجاوز الموعد المقترح ولم يُدرَّس بعد':'قادم'}">${icon}</span><input class="lnt" value="${esc(t)}" placeholder="عنوان الدرس" style="flex:2;margin-bottom:0"><input class="lnd" type="date" value="${esc(d)}" style="flex:1;margin-bottom:0" onchange="checkLessonDate(this)"><button type="button" class="btn del sm" onclick="this.closest('.lnwrap').remove()">×</button></div><div class="dwarn mut" style="font-size:11px;color:var(--o);margin:0 0 6px"></div></div>`;
+}
+function addLesson(){document.getElementById('lns').insertAdjacentHTML('beforeend',lessonRow('','','upcoming'))}
+function currentSlotWeekdays(){return new Set([...document.querySelectorAll('.sl')].map(r=>+r.querySelectorAll('select')[0].value))}
+function checkLessonDate(inp){
+  const warnEl=inp.closest('.lnwrap').querySelector('.dwarn'),val=inp.value;
+  if(!val){warnEl.textContent='';return}
+  const allowed=currentSlotWeekdays();
+  if(!allowed.size){warnEl.textContent='';return}
+  const wd=weekdayOf(val);
+  warnEl.textContent=allowed.has(wd)?'':`⚠️ ${DAYS[wd]} ليس من أيام حصص هذه المادة في الجدول الأسبوعي`;
+}
+function recheckAllLessonDates(){
+  const lns=document.getElementById('lns');if(!lns)return;
+  [...lns.querySelectorAll('.lnd')].forEach(checkLessonDate);
+  const hint=document.getElementById('dayhint');if(!hint)return;
+  const allowed=[...currentSlotWeekdays()].sort();
+  hint.textContent=allowed.length?('أيام جدول هذه المادة: '+allowed.map(d=>DAYS[d]).join('، ')+' — يُفضَّل اختيار تواريخ الدروس من هذه الأيام'):'لا يوجد جدول أسبوعي محدَّد بعد لهذه المادة، فلا قيود حالياً على تاريخ الدرس';
+}
 function subForm(id){
   const s=db.subjects.find(x=>x.id===id)||{name:'',classIds:[],slots:[],curriculum:[]};
+  const cur=normCur(s.curriculum),taughtMax=id?lessonTaughtMax(id):0,t=today();
   dlg(`<h2>${id?'تعديل مادة':'إضافة مادة'}</h2><label>اسم المادة</label><input id="f1" value="${esc(s.name)}"><label>الصفوف</label>
   ${db.classes.map(c=>`<div><label><input type="checkbox" class="cc" style="width:auto" value="${c.id}" ${s.classIds.includes(c.id)?'checked':''}> ${esc(c.name)}</label></div>`).join('')}
   <label>الحصص الأسبوعية</label><div id="sls">${s.slots.map(x=>slotRow(x.d,x.p)).join('')}</div><button class="btn sec sm" onclick="addSlot()">+ حصة</button>
-  <label>خطة المنهج (اختياري، درس واحد في كل سطر وبالترتيب)</label><textarea id="f5" rows="5" placeholder="مثال:&#10;الفصل المشترك الأكبر&#10;القسمة على رقمين&#10;المعادلات البسيطة">${esc((s.curriculum||[]).join('\n'))}</textarea>
+  <label>خطة المنهج (اختياري) — عنوان الدرس وتاريخه المقترح، بالترتيب</label>
+  <div class="mut" style="font-size:12px;margin-bottom:4px">✅ دُرِّس بالفعل (في صف واحد على الأقل) · ⚠️ تجاوز موعده المقترح ولم يُدرَّس · ⬜ قادم</div>
+  <div class="mut" id="dayhint" style="font-size:12px;margin-bottom:6px"></div>
+  <div id="lns">${cur.map((x,i)=>lessonRow(x.t,x.d,i<taughtMax?'done':(x.d&&x.d<t?'late':'upcoming'))).join('')}</div>
+  <button type="button" class="btn sec sm" onclick="addLesson()">+ درس</button>
   <div class="er" id="er"></div><div class="row"><button class="btn sp" onclick="saveSub('${id||''}')">حفظ</button><button class="btn sec sp" onclick="closeD()">إلغاء</button></div>`);
+  recheckAllLessonDates();
 }
 function saveSub(id){
   const n=f1.value.trim();if(!n)return err('اسم المادة مطلوب');
-  const curriculum=f5.value.split('\n').map(x=>x.trim()).filter(Boolean);
+  const curriculum=[...document.querySelectorAll('.ln')].map(r=>({t:r.querySelector('.lnt').value.trim(),d:r.querySelector('.lnd').value})).filter(x=>x.t);
   const o={name:n,classIds:[...document.querySelectorAll('.cc:checked')].map(x=>x.value),slots:[...document.querySelectorAll('.sl')].map(r=>{const q=r.querySelectorAll('select');return{d:+q[0].value,p:+q[1].value}}),curriculum};
   if(id)Object.assign(db.subjects.find(x=>x.id===id),o);else db.subjects.push({id:uid(),...o});
   save();closeD();render();
@@ -370,7 +403,7 @@ function evalV(){
   <div class="row"><div class="sp"><label>التاريخ</label><input type="date" value="${e.d}" onchange="setE('d',this.value)"></div><div class="sp"><label>الحصة</label><select onchange="setE('p',+this.value)">${[1,2,3,4,5,6,7].map(x=>`<option value="${x}" ${x===e.p?'selected':''}>${x}</option>`).join('')}</select></div></div>
   <label>موضوع الحصة (اختياري)</label><input placeholder="مثال: القسمة على رقمين" value="${esc(S.topic||'')}" oninput="S.topic=this.value" style="margin-bottom:0"></div>
   ${sched?'':`<div class="card" style="border-color:var(--o)">⚠️ تنبيه: هذه المادة غير مجدولة في هذا التاريخ (${DAYS[weekdayOf(e.d)]||''}) على الحصة ${e.p} حسب الجدول الأسبوعي. يمكنك الحفظ رغم ذلك (مثلاً لحصة تعويضية)، لكن تأكد أن هذا مقصود.</div>`}
-  ${(()=>{const pr=subjectProgress(e.s,e.c);if(!pr)return '';return `<div class="card"><b>📘 تقدّم المنهج</b><div class="bar" style="margin:6px 0"><div style="width:${Math.min(100,pr.taught/pr.total*100)}%;background:var(--pri)"></div></div><div class="mut" style="font-size:13px">تم توثيق ${pr.taught} من ${pr.total} درساً</div>${pr.next?`<div class="mut" style="margin-top:6px">الدرس المتوقع التالي حسب الخطة: <b style="color:var(--tx)">${esc(pr.next)}</b></div><button class="btn sec sm" style="margin-top:6px" data-next="${esc(pr.next)}" onclick="S.topic=this.getAttribute('data-next');render()">استخدام هذا كموضوع الحصة</button>`:'<div class="mut" style="margin-top:6px">✅ تم توثيق كل دروس الخطة المقررة</div>'}</div>`;})()}
+  ${(()=>{const pr=subjectProgress(e.s,e.c);if(!pr)return '';return `<div class="card"><b>📘 تقدّم المنهج</b><div class="bar" style="margin:6px 0"><div style="width:${Math.min(100,pr.taught/pr.total*100)}%;background:var(--pri)"></div></div><div class="mut" style="font-size:13px">تم توثيق ${pr.taught} من ${pr.total} درساً</div>${pr.next?`<div class="mut" style="margin-top:6px">الدرس المتوقع التالي حسب الخطة: <b style="color:var(--tx)">${esc(pr.next)}</b>${pr.nextDate?` <span style="font-size:12px">(موعده المقترح: ${pr.nextDate}${pr.nextDate<today()?' — متأخر ⚠️':''})</span>`:''}</div><button class="btn sec sm" style="margin-top:6px" data-next="${esc(pr.next)}" onclick="S.topic=this.getAttribute('data-next');render()">استخدام هذا كموضوع الحصة</button>`:'<div class="mut" style="margin-top:6px">✅ تم توثيق كل دروس الخطة المقررة</div>'}</div>`;})()}
   ${db.evals[k]?'<p class="mut">هذه الحصة محفوظة سابقاً، يمكنك تعديلها.</p>':''}
   <div class="row"><button class="btn sec sm" onclick="allGood()">تعيين الكل ممتاز</button><button class="btn sec sm" onclick="allPresent()">تعيين الكل حاضر</button><span class="mut">${done} من ${sts.length} مقيَّمون</span></div>
   <input id="eq" placeholder="بحث عن طالب بالاسم أو الرقم الأكاديمي" value="${esc(S.eq||'')}" oninput="S.eq=this.value;renderEvalList()">
@@ -393,9 +426,10 @@ function renderEvalList(){
 function setE(k,v){S.e[k]=v;if(k==='c'){S.e.s='';S.eq=''}render()}
 function subjectProgress(sid,cid){
   const sub=db.subjects.find(x=>x.id===sid);if(!sub||!sub.curriculum||!sub.curriculum.length)return null;
+  const cur=normCur(sub.curriculum);
   const taught=Object.values(db.evals).filter(e=>e.s===sid&&e.c===cid&&e.topic&&e.topic.trim()).length;
-  const total=sub.curriculum.length;
-  return{taught,total,next:taught<total?sub.curriculum[taught]:null};
+  const total=cur.length;
+  return{taught,total,next:taught<total?cur[taught].t:null,nextDate:taught<total?cur[taught].d:null};
 }
 function topicGaps(threshold){
   threshold=threshold||7;const t=new Date(today()),out=[];
