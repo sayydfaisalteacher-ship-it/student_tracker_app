@@ -6,8 +6,6 @@
 <title>متابعة أداء الطلاب</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1f6f68">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="متابعة الطلاب">
@@ -138,7 +136,8 @@ function home(){
   ${missed.length?`<h2>⏰ متابعة آخر النهار — حصص لم تُقيَّم بعد</h2>${missed.map(x=>`<div class="card row" onclick="goToSession('${x.c}','${x.s}',${x.p})" style="cursor:pointer;border-color:var(--o)"><div class="sp"><b>${esc(cn(x.c))}</b> · ${esc(sn(x.s))} · حصة ${x.p}</div><span class="mut">قيّم الآن ←</span></div>`).join('')}`:''}
   ${(()=>{const w=studentOfPeriod(7),m=studentOfPeriod(30);if(!w&&!m)return'';
     const card=(x,label)=>x?`<div class="card sp" style="text-align:center" onclick="S.pid='${x.s.id}';go('profile')">${av(x.s)}<div style="font-weight:800;margin-top:4px">${esc(x.s.name)}</div><div class="mut" style="font-size:12px">${label} · ${x.a.toFixed(1)}/4</div></div>`:'';
-    return `<h2>🏆 طلاب متميزون</h2><div class="row">${card(w,'طالب الأسبوع')}${card(m,'طالب الشهر')}</div>`;
+    const monthCard=m?(S.revealMonth?card(m,'طالب الشهر'):`<div class="card sp" style="text-align:center"><div style="font-size:30px">🎁</div><div class="mut" style="margin:4px 0">طالب الشهر مخفي</div><button class="btn sec sm" onclick="S.revealMonth=true;render()">✨ كشف طالب الشهر</button></div>`):'';
+    return `<h2>🏆 طلاب متميزون</h2><div class="row">${card(w,'طالب الأسبوع')}${monthCard}</div>`;
   })()}
   <div class="grid">
   <button class="tile main" onclick="go('todayEval')"><b>✅</b>تقييم حصة اليوم</button>
@@ -733,7 +732,7 @@ function profileV(){
   const svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;direction:ltr">${[1,2,3,4].map(v=>`<line x1="10" x2="${W-10}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--bd)"/><text x="0" y="${Y(v)+4}" font-size="9" fill="var(--mut)">${v}</text>`).join('')}<polyline fill="none" stroke="var(--pri)" stroke-width="2.5" points="${pts.map((p,i)=>X(i)+','+Y(p[1])).join(' ')}"/>${pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p[1])}" r="4" fill="var(--pri)"/>`).join('')}</svg>`;
   const ah=attHist(s.id,{s:f.s,from:f.from,to:f.to}),{ac,an}=attBreak(ah);
   const wk=studentOfPeriod(7),mo=studentOfPeriod(30);
-  const badges=[wk&&wk.s.id===s.id?'🏆 طالب الأسبوع':'',mo&&mo.s.id===s.id?'🏆 طالب الشهر':''].filter(Boolean);
+  const badges=[wk&&wk.s.id===s.id?'🏆 طالب الأسبوع':'',S.revealMonth&&mo&&mo.s.id===s.id?'🏆 طالب الشهر':''].filter(Boolean);
   return `<button class="btn sec sm noprint" onclick="go('reports')">← رجوع</button><div class="card row" style="margin-top:10px"><img class="av big" src="${s.photo||NOAV}"><div class="sp"><h2 style="margin:0">${esc(s.name)}</h2><div class="mut">${esc(s.num)} · ${esc(cn(s.classId))}<br>المستوى المبدئي: ${LV[s.level][0]}</div>${badges.length?`<div style="margin-top:6px">${badges.map(b=>`<span class="chip g" style="margin-left:4px">${b}</span>`).join('')}</div>`:''}</div></div>
   <div class="card"><b>الأداء الحالي:</b> ${a?a.toFixed(1)+' من 4':'—'}<div class="mut">${cmp}</div><div style="height:8px"></div>${h.length?bar(h):''}
   ${CRIT.map(cr=>critAvg(h,cr[0])).some(v=>v!==null)?`<div class="mut" style="font-size:13px;margin-top:6px">${CRIT.map(cr=>{const v=critAvg(h,cr[0]);return v!==null?`${cr[1]} ${v.toFixed(1)}/4`:''}).filter(Boolean).join(' · ')}</div>`:''}</div>
