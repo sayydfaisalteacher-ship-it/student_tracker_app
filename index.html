@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>متابعة أداء الطلاب</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1f6f68">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="متابعة الطلاب">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -129,6 +136,10 @@ function home(){
   <div class="card sp" style="text-align:center;border-color:${gaps.length?'var(--o)':'var(--bd)'}" onclick="S.rtab='plan';go('reports')"><div style="font-size:26px;font-weight:800">${gaps.length}</div><div class="mut">توثيق متأخر</div></div>
   </div>
   ${missed.length?`<h2>⏰ متابعة آخر النهار — حصص لم تُقيَّم بعد</h2>${missed.map(x=>`<div class="card row" onclick="goToSession('${x.c}','${x.s}',${x.p})" style="cursor:pointer;border-color:var(--o)"><div class="sp"><b>${esc(cn(x.c))}</b> · ${esc(sn(x.s))} · حصة ${x.p}</div><span class="mut">قيّم الآن ←</span></div>`).join('')}`:''}
+  ${(()=>{const w=studentOfPeriod(7),m=studentOfPeriod(30);if(!w&&!m)return'';
+    const card=(x,label)=>x?`<div class="card sp" style="text-align:center" onclick="S.pid='${x.s.id}';go('profile')">${av(x.s)}<div style="font-weight:800;margin-top:4px">${esc(x.s.name)}</div><div class="mut" style="font-size:12px">${label} · ${x.a.toFixed(1)}/4</div></div>`:'';
+    return `<h2>🏆 طلاب متميزون</h2><div class="row">${card(w,'طالب الأسبوع')}${card(m,'طالب الشهر')}</div>`;
+  })()}
   <div class="grid">
   <button class="tile main" onclick="go('todayEval')"><b>✅</b>تقييم حصة اليوم</button>
   ${[['students','👥','الطلاب'],['classes','🏫','الصفوف'],['subjects','📚','المواد'],['reports','📊','التقارير'],['backup','💾','نسخ احتياطي']].map(x=>`<button class="tile" onclick="go('${x[0]}')"><b>${x[1]}</b>${x[2]}</button>`).join('')}</div>
@@ -138,7 +149,7 @@ function home(){
 /* ===== الصفوف ===== */
 function classesV(){
   return `<h1>الصفوف</h1><button class="btn" onclick="classForm()">+ إضافة صف</button><div style="height:10px"></div>`+
-  (db.classes.map(c=>`<div class="card row"><div class="sp"><b>${esc(c.name)}</b><div class="mut">${db.students.filter(s=>s.classId===c.id).length} طالب</div></div><button class="btn sec sm" onclick="classForm('${c.id}')">تعديل</button><button class="btn del sm" onclick="delClass('${c.id}')">حذف</button></div>`).join('')||'<p class="mut">لا توجد صفوف. أضف أول صف.</p>');
+  (db.classes.map(c=>`<div class="card row"><div class="sp"><b>${esc(c.name)}</b><div class="mut">${db.students.filter(s=>s.classId===c.id).length} طالب</div></div><button class="btn sec sm" onclick="seatingForm('${c.id}')">🪑 المقاعد</button><button class="btn sec sm" onclick="classForm('${c.id}')">تعديل</button><button class="btn del sm" onclick="delClass('${c.id}')">حذف</button></div>`).join('')||'<p class="mut">لا توجد صفوف. أضف أول صف.</p>');
 }
 function classForm(id){
   const c=db.classes.find(x=>x.id===id)||{name:''};
@@ -153,6 +164,37 @@ function delClass(id){
   if(db.students.some(s=>s.classId===id))return toast('انقل طلاب هذا الصف أو احذفهم أولاً');
   ask('حذف هذا الصف؟',()=>{db.classes=db.classes.filter(c=>c.id!==id);db.subjects.forEach(s=>s.classIds=s.classIds.filter(x=>x!==id));save();render()});
 }
+function seatingForm(classId){
+  const cls=db.classes.find(c=>c.id===classId);if(!cls)return;
+  const rows=cls.seatRows||5,cols=cls.seatCols||6,sts=db.students.filter(s=>s.classId===classId),unassigned=sts.filter(s=>!s.seat);
+  let grid=`<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:5px;margin:8px 0">`;
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    const s=sts.find(x=>x.seat&&x.seat.r===r&&x.seat.c===c);
+    grid+=s?`<button type="button" onclick="unassignSeat('${s.id}','${classId}')" style="aspect-ratio:1;border-radius:8px;border:1px solid var(--pri);background:var(--card);font-size:9px;padding:2px;overflow:hidden">${esc(s.name.split(' ')[0])}</button>`
+         :`<button type="button" onclick="pickSeat(${r},${c},'${classId}')" style="aspect-ratio:1;border-radius:8px;border:1px dashed var(--bd);background:var(--bg);color:var(--mut)">+</button>`;
+  }
+  grid+='</div>';
+  dlg(`<h2>🪑 ترتيب مقاعد: ${esc(cls.name)}</h2>
+  <div class="row"><div class="sp"><label>عدد الصفوف</label><input type="number" id="srw" value="${rows}" min="1" max="12"></div><div class="sp"><label>عدد الأعمدة</label><input type="number" id="scl" value="${cols}" min="1" max="12"></div></div>
+  <button class="btn sec sm" onclick="updateGrid('${classId}')">تحديث الشبكة</button>
+  <p class="mut" style="font-size:12px;margin-top:8px">اضغط مقعداً فارغاً (+) لتعيين طالب، أو مقعداً مشغولاً لإلغاء تعيينه.</p>
+  ${grid}
+  ${unassigned.length?`<p class="mut" style="font-size:12px">طلاب بلا مقعد بعد: ${unassigned.map(s=>esc(s.name)).join('، ')}</p>`:''}
+  <button class="btn sp" style="width:100%" onclick="closeD();render()">تم</button>`);
+}
+function updateGrid(classId){
+  const cls=db.classes.find(c=>c.id===classId);
+  cls.seatRows=Math.min(12,Math.max(1,+srw.value||5));cls.seatCols=Math.min(12,Math.max(1,+scl.value||6));
+  save();seatingForm(classId);
+}
+function pickSeat(r,c,classId){
+  const sts=db.students.filter(s=>s.classId===classId&&!s.seat);
+  if(!sts.length)return toast('لا يوجد طلاب بدون مقعد في هذا الصف');
+  dlg(`<h2>اختر طالباً لهذا المقعد</h2>${sts.map(s=>`<div class="card row" onclick="assignSeat('${s.id}',${r},${c},'${classId}')" style="cursor:pointer">${av(s)}<b>${esc(s.name)}</b></div>`).join('')}
+  <button class="btn sec sp" style="width:100%;margin-top:8px" onclick="seatingForm('${classId}')">رجوع</button>`);
+}
+function assignSeat(studId,r,c,classId){const s=db.students.find(x=>x.id===studId);if(s)s.seat={r,c};save();seatingForm(classId)}
+function unassignSeat(studId,classId){const s=db.students.find(x=>x.id===studId);if(s)delete s.seat;save();seatingForm(classId)}
 
 /* ===== المواد ===== */
 function subjectsV(){
@@ -424,8 +466,9 @@ function evalV(){
   ${db.evals[k]?'<p class="mut">هذه الحصة محفوظة سابقاً، يمكنك تعديلها.</p>':''}
   <div class="row"><button class="btn sec sm" onclick="allGood()">تعيين الكل ممتاز</button><button class="btn sec sm" onclick="allPresent()">تعيين الكل حاضر</button><span class="mut">${done} من ${sts.length} مقيَّمون</span></div>
   <button class="btn sm" style="width:100%;margin-bottom:8px;background:linear-gradient(90deg,#8b5cf6,#ec4899);border:0" onclick="pickRandomStudent()">🎲 اختيار طالب عشوائي للمشاركة</button>
-  <input id="eq" placeholder="بحث عن طالب بالاسم أو الرقم الأكاديمي" value="${esc(S.eq||'')}" oninput="S.eq=this.value;renderEvalList()">
-  <div id="evl">${evalListHtml(sts)}</div>
+  <div class="row"><button class="btn ${S.seatView?'sec':''} sm sp" onclick="S.seatView=false;render()">📋 قائمة</button><button class="btn ${S.seatView?'':'sec'} sm sp" onclick="S.seatView=true;render()">🪑 مخطط المقاعد</button></div>
+  ${S.seatView?'':`<input id="eq" placeholder="بحث عن طالب بالاسم أو الرقم الأكاديمي" value="${esc(S.eq||'')}" oninput="S.eq=this.value;renderEvalList()">`}
+  <div id="evl">${S.seatView?seatGridHtml(sts):evalListHtml(sts)}</div>
   <button class="btn" style="width:100%;padding:14px" onclick="saveEval()">حفظ الحصة</button>`;
 }
 function evalListHtml(sts){
@@ -440,6 +483,31 @@ function evalListHtml(sts){
 function renderEvalList(){
   const sts=db.students.filter(x=>x.classId===S.e.c);
   document.getElementById('evl').innerHTML=evalListHtml(sts);
+}
+function seatGridHtml(sts){
+  const cls=db.classes.find(c=>c.id===S.e.c);
+  if(!cls||!cls.seatRows)return '<p class="mut">لم يُحدَّد مخطط مقاعد لهذا الصف بعد. أضفه من صفحة "الصفوف" → 🪑 المقاعد.</p>';
+  const rows=cls.seatRows,cols=cls.seatCols;
+  let html=`<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:6px">`;
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    const s=sts.find(x=>x.seat&&x.seat.r===r&&x.seat.c===c);
+    if(!s){html+='<div></div>';continue}
+    const rr=S.rows[s.id]||{},at=rr.att||'p';
+    const colr=at==='a'?'var(--r)':(rowScore(rr)!==null?'var(--g)':'var(--bd)');
+    html+=`<button type="button" onclick="openSeatRate('${s.id}')" style="aspect-ratio:1;border-radius:10px;border:2px solid ${colr};background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px;font-size:10px;overflow:hidden"><img src="${s.photo||NOAV}" style="width:55%;aspect-ratio:1;border-radius:50%;object-fit:cover;margin-bottom:2px">${esc(s.name.split(' ')[0])}</button>`;
+  }
+  html+='</div>';
+  const unseated=sts.filter(s=>!s.seat);
+  if(unseated.length)html+=`<p class="mut" style="font-size:12px;margin-top:8px">بلا مقعد: ${unseated.map(s=>esc(s.name)).join('، ')}</p>`;
+  return html;
+}
+function openSeatRate(id){
+  const s=db.students.find(x=>x.id===id);if(!s)return;
+  const r=S.rows[id]||{},at=r.att||'p',c=r.c||{};
+  dlg(`<div class="row">${av(s)}<b class="sp">${esc(s.name)}</b></div>
+  <div class="rb" style="grid-template-columns:repeat(4,1fr)">${['p','l','e','a'].map(ak=>`<button class="${ATT[ak][1]} ${at===ak?'on':''}" onclick="setAtt('${id}','${ak}');openSeatRate('${id}')">${ATT[ak][0]}</button>`).join('')}</div>
+  ${CRIT.map(cr=>`<div class="mut" style="font-size:12px;margin-top:6px">${cr[1]}</div><div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c[cr[0]]===v?'on':''}" onclick="rateC('${id}','${cr[0]}',${v});openSeatRate('${id}')">${RT[v][0]}</button>`).join('')}</div>`).join('')}
+  <button class="btn sec sp" style="width:100%;margin-top:10px" onclick="closeD();render()">تم</button>`);
 }
 function setE(k,v){S.e[k]=v;if(k==='c'){S.e.s='';S.eq=''}render()}
 function pickRandomStudent(){
@@ -524,6 +592,14 @@ function attHist(id,f){
 }
 const avg=h=>h.length?h.reduce((a,x)=>a+x.score,0)/h.length:0;
 function alertList(){return db.students.map(s=>({s,h:hist(s.id,{})})).filter(x=>{const l=x.h.slice(-5);return l.filter(y=>Math.round(y.score)<=2).length>=3})}
+function studentOfPeriod(days){
+  const from=new Date();from.setDate(from.getDate()-days);
+  const fromStr=from.toISOString().slice(0,10);
+  const res=db.students.map(s=>{const h=hist(s.id,{from:fromStr});return{s,a:avg(h),n:h.length}}).filter(x=>x.n>=3);
+  if(!res.length)return null;
+  res.sort((a,b)=>b.a-a.a);
+  return res[0];
+}
 function isHoliday(d){return (db.holidays||[]).includes(d)}
 function weekdayOf(dateStr){const[y,m,d]=dateStr.split('-').map(Number);return new Date(y,m-1,d).getDay()}
 function isScheduled(subId,dateStr,period){
@@ -656,7 +732,9 @@ function profileV(){
   const W=300,H=110,X=i=>pts.length<2?W/2:15+i*(W-30)/(pts.length-1),Y=v=>H-15-(v-1)*(H-30)/3;
   const svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;direction:ltr">${[1,2,3,4].map(v=>`<line x1="10" x2="${W-10}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--bd)"/><text x="0" y="${Y(v)+4}" font-size="9" fill="var(--mut)">${v}</text>`).join('')}<polyline fill="none" stroke="var(--pri)" stroke-width="2.5" points="${pts.map((p,i)=>X(i)+','+Y(p[1])).join(' ')}"/>${pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p[1])}" r="4" fill="var(--pri)"/>`).join('')}</svg>`;
   const ah=attHist(s.id,{s:f.s,from:f.from,to:f.to}),{ac,an}=attBreak(ah);
-  return `<button class="btn sec sm noprint" onclick="go('reports')">← رجوع</button><div class="card row" style="margin-top:10px"><img class="av big" src="${s.photo||NOAV}"><div class="sp"><h2 style="margin:0">${esc(s.name)}</h2><div class="mut">${esc(s.num)} · ${esc(cn(s.classId))}<br>المستوى المبدئي: ${LV[s.level][0]}</div></div></div>
+  const wk=studentOfPeriod(7),mo=studentOfPeriod(30);
+  const badges=[wk&&wk.s.id===s.id?'🏆 طالب الأسبوع':'',mo&&mo.s.id===s.id?'🏆 طالب الشهر':''].filter(Boolean);
+  return `<button class="btn sec sm noprint" onclick="go('reports')">← رجوع</button><div class="card row" style="margin-top:10px"><img class="av big" src="${s.photo||NOAV}"><div class="sp"><h2 style="margin:0">${esc(s.name)}</h2><div class="mut">${esc(s.num)} · ${esc(cn(s.classId))}<br>المستوى المبدئي: ${LV[s.level][0]}</div>${badges.length?`<div style="margin-top:6px">${badges.map(b=>`<span class="chip g" style="margin-left:4px">${b}</span>`).join('')}</div>`:''}</div></div>
   <div class="card"><b>الأداء الحالي:</b> ${a?a.toFixed(1)+' من 4':'—'}<div class="mut">${cmp}</div><div style="height:8px"></div>${h.length?bar(h):''}
   ${CRIT.map(cr=>critAvg(h,cr[0])).some(v=>v!==null)?`<div class="mut" style="font-size:13px;margin-top:6px">${CRIT.map(cr=>{const v=critAvg(h,cr[0]);return v!==null?`${cr[1]} ${v.toFixed(1)}/4`:''}).filter(Boolean).join(' · ')}</div>`:''}</div>
   ${ah.length?`<div class="card"><b>الحضور</b><div class="bar" style="margin-top:6px">${['p','l','e','a'].map(k=>`<div style="width:${ac[k]/an*100}%;background:var(--${ATT[k][1]})"></div>`).join('')}</div><div class="mut" style="font-size:12px">${['p','l','e','a'].map(k=>`${ATT[k][0]} ${Math.round(ac[k]/an*100)}%`).join(' · ')}</div></div>`:''}
@@ -727,6 +805,7 @@ function importBackupFile(inp){
   r.readAsText(f);
 }
 render();
+if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js')}catch(e){}}
 </script>
 
 </body>
