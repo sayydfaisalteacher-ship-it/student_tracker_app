@@ -43,6 +43,8 @@ label{font-size:14px;color:var(--mut)}
 .qnwrap button{font-size:11.5px;padding:4px 9px;border-radius:14px;border:1px solid var(--bd);background:var(--bg);color:var(--mut);cursor:pointer}
 .qnwrap button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
 nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--bd);display:flex;padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px))}
+.fab{display:none;position:fixed;left:16px;bottom:calc(78px + env(safe-area-inset-bottom,0px));width:58px;height:58px;border-radius:50%;background:var(--pri);color:#fff;border:0;box-shadow:0 4px 14px rgba(0,0,0,.3);font-size:24px;z-index:6;align-items:center;justify-content:center;cursor:pointer}
+.fab:active{transform:scale(.93)}
 nav button{flex:1;background:none;border:0;font-size:11px;color:var(--mut);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border-radius:12px;margin:0 2px}
 nav button b{font-size:20px}nav button.on{color:var(--pri);font-weight:800;background:color-mix(in srgb,var(--pri) 15%,transparent)}
 .md{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:9}.md[hidden]{display:none}
@@ -57,16 +59,18 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:6px 4px;b
 <body>
 <main id="app"></main>
 <nav id="nav"></nav>
+<button id="fab" class="fab" onclick="saveEval()" title="حفظ الحصة">💾</button>
 <div class="md" id="md" hidden><div class="box" id="bx"></div></div>
 <div id="toast"></div>
 <script>
 /* ===== البيانات ===== */
 const RT={4:['ممتاز','g'],3:['جيد','b'],2:['يحتاج متابعة','o'],1:['ضعيف','r']};
 const ATT={p:['حاضر','g'],l:['متأخر','o'],e:['مستأذن','b'],a:['غائب','r']};
-const CRIT=[['par','المشاركة'],['beh','السلوك'],['hw','الواجبات']];
+const CRIT_DEF=[['par','المشاركة'],['beh','السلوك'],['hw','الواجبات']];
+function CRIT(){return CRIT_DEF.map(([k,def])=>[k,(db.critLabels&&db.critLabels[k])||def])}
 const QN=['نائم أثناء الحصة','استخدام الهاتف','لم يُحضر الواجب','مشارك بفعالية','يحتاج مراجعة أكثر','تحدّث دون إذن','متعاون مع زملائه','متأخر عن الحصة','مشتّت الانتباه','أداء متميز'];
 function rowScore(row){
-  if(row&&row.c){const v=CRIT.map(x=>row.c[x[0]]).filter(Boolean);if(v.length)return v.reduce((a,b)=>a+b,0)/v.length}
+  if(row&&row.c){const v=CRIT().map(x=>row.c[x[0]]).filter(Boolean);if(v.length)return v.reduce((a,b)=>a+b,0)/v.length}
   if(row&&row.r)return row.r; // بيانات قديمة بتقدير واحد قبل التحديث
   return null;
 }
@@ -87,6 +91,18 @@ let db=null;try{db=JSON.parse(localStorage.getItem('sp1')||'null')}catch(e){}
 if(!db)db=seed();
 if(!db.holidays)db.holidays=[];
 try{const th=localStorage.getItem('sp1-theme');if(th)document.documentElement.dataset.theme=th}catch(e){}
+try{const fs=localStorage.getItem('sp1-fontsize');if(fs)document.body.style.fontSize=fs+'px'}catch(e){}
+function setFontSize(n){
+  document.body.style.fontSize=n+'px';
+  try{localStorage.setItem('sp1-fontsize',n)}catch(e){}
+  render();
+}
+function saveCritLabels(){
+  const vals=[cn0.value.trim(),cn1.value.trim(),cn2.value.trim()];
+  if(vals.some(v=>!v))return toast('لا يمكن ترك اسم معيار فارغاً');
+  db.critLabels={par:vals[0],beh:vals[1],hw:vals[2]};
+  save();toast('تم حفظ الأسماء ✓');render();
+}
 function toggleTheme(){
   const cur=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
   const next=cur==='dark'?'light':'dark';
@@ -111,6 +127,7 @@ function go(v){
 function render(){
   document.getElementById('nav').innerHTML=NAV.map(n=>`<button class="${V===n[0]?'on':''}" onclick="go('${n[0]}')"><b>${n[1]}</b>${n[2]}</button>`).join('');
   document.getElementById('app').innerHTML=({home,eval:evalV,students:studentsV,classes:classesV,subjects:subjectsV,reports:reportsV,profile:profileV,backup:backupV})[V]();
+  document.getElementById('fab').style.display=(V==='eval')?'flex':'none';
 }
 const cn=id=>(db.classes.find(c=>c.id===id)||{}).name||'—';
 const sn=id=>(db.subjects.find(c=>c.id===id)||{}).name||'—';
@@ -123,15 +140,25 @@ function ask(msg,fn){window._cf=fn;dlg(`<p>${msg}</p><div class="row"><button cl
 function err(m){document.getElementById('er').textContent=m}
 
 /* ===== الرئيسية ===== */
+function todaySchedule(){
+  if(isHoliday(today()))return[];
+  const di=new Date().getDay(),t=today(),out=[];
+  db.subjects.forEach(sub=>sub.slots.filter(sl=>sl.d===di).forEach(sl=>sub.classIds.forEach(cid=>out.push({c:cid,s:sub.id,p:sl.p,done:!!db.evals[[cid,sub.id,t,sl.p].join('|')]}))));
+  return out.sort((a,b)=>a.p-b.p);
+}
+const FULLDAYS=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 function home(){
-  const alerts=alertList(),notDone=classesNotEvaluatedToday(),gaps=topicGaps(),hol=isHoliday(today()),missed=missedToday();
-  const th=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
-  return `<div class="row"><h1 class="sp">متابعة أداء الطلاب</h1><button class="btn sec sm" onclick="toggleTheme()">${th==='dark'?'☀️ فاتح':'🌙 داكن'}</button></div>
-  ${hol?'<div class="card" style="border-color:var(--pri);text-align:center">📅 اليوم مُسجَّل كعطلة دراسية</div>':''}
+  const alerts=alertList(),notDone=classesNotEvaluatedToday(),gaps=topicGaps(),hol=isHoliday(today()),missed=missedToday(),sched=todaySchedule();
+  const dateLabel=FULLDAYS[new Date().getDay()]+'، '+new Date().toLocaleDateString('ar',{day:'numeric',month:'long'});
+  return `<div style="background:linear-gradient(135deg,var(--pri),#2e9e8f);border-radius:18px;padding:16px 18px;margin-bottom:12px;color:#fff;display:flex;align-items:center;justify-content:space-between">
+  <div><div style="font-size:13px;opacity:.85">${dateLabel}</div><div style="font-size:20px;font-weight:800;margin-top:2px">متابعة أداء الطلاب</div></div>
+  <button onclick="go('backup')" style="background:rgba(255,255,255,.2);border:0;color:#fff;width:42px;height:42px;border-radius:50%;font-size:19px;cursor:pointer" title="الإعدادات">⚙️</button>
+  </div>
+  ${hol?'<div class="card" style="border-color:var(--pri);text-align:center">📅 اليوم مُسجَّل كعطلة دراسية</div>':sched.length?`<div class="sc" style="margin-bottom:10px"><div style="display:flex;gap:8px;padding-bottom:2px">${sched.map(x=>`<div onclick="goToSession('${x.c}','${x.s}',${x.p})" style="cursor:pointer;flex:none;min-width:118px;background:var(--card);border:1px solid ${x.done?'var(--g)':'var(--bd)'};border-radius:12px;padding:8px;text-align:center"><div class="mut" style="font-size:11px">حصة ${x.p} ${x.done?'✅':''}</div><div style="font-weight:700;font-size:13px;margin-top:2px">${esc(sn(x.s))}</div><div class="mut" style="font-size:11px">${esc(cn(x.c))}</div></div>`).join('')}</div></div>`:''}
   <div class="row" style="margin-bottom:10px">
-  <div class="card sp" style="text-align:center;border-color:${alerts.length?'var(--r)':'var(--bd)'}" onclick="go('reports')"><div style="font-size:26px;font-weight:800">${alerts.length}</div><div class="mut">تنبيه متابعة</div></div>
-  <div class="card sp" style="text-align:center" onclick="go('eval')"><div style="font-size:26px;font-weight:800">${notDone.length}</div><div class="mut">صف لم يُقيَّم اليوم</div></div>
-  <div class="card sp" style="text-align:center;border-color:${gaps.length?'var(--o)':'var(--bd)'}" onclick="S.rtab='plan';go('reports')"><div style="font-size:26px;font-weight:800">${gaps.length}</div><div class="mut">توثيق متأخر</div></div>
+  <div class="card sp" style="text-align:center;background:${alerts.length?'rgba(214,69,69,.1)':'var(--card)'};border-color:${alerts.length?'var(--r)':'var(--bd)'}" onclick="go('reports')"><div style="font-size:20px">🔴</div><div style="font-size:24px;font-weight:800;margin-top:2px">${alerts.length}</div><div class="mut" style="font-size:12px">تنبيه متابعة</div></div>
+  <div class="card sp" style="text-align:center;background:${notDone.length?'rgba(47,111,208,.1)':'var(--card)'};border-color:${notDone.length?'var(--b)':'var(--bd)'}" onclick="go('eval')"><div style="font-size:20px">📘</div><div style="font-size:24px;font-weight:800;margin-top:2px">${notDone.length}</div><div class="mut" style="font-size:12px">صف لم يُقيَّم اليوم</div></div>
+  <div class="card sp" style="text-align:center;background:${gaps.length?'rgba(224,138,30,.1)':'var(--card)'};border-color:${gaps.length?'var(--o)':'var(--bd)'}" onclick="S.rtab='plan';go('reports')"><div style="font-size:20px">📄</div><div style="font-size:24px;font-weight:800;margin-top:2px">${gaps.length}</div><div class="mut" style="font-size:12px">توثيق متأخر</div></div>
   </div>
   ${missed.length?`<h2>⏰ متابعة آخر النهار — حصص لم تُقيَّم بعد</h2>${missed.map(x=>`<div class="card row" onclick="goToSession('${x.c}','${x.s}',${x.p})" style="cursor:pointer;border-color:var(--o)"><div class="sp"><b>${esc(cn(x.c))}</b> · ${esc(sn(x.s))} · حصة ${x.p}</div><span class="mut">قيّم الآن ←</span></div>`).join('')}`:''}
   ${(()=>{const w=studentOfPeriod(7),m=studentOfPeriod(30);if(!w&&!m)return'';
@@ -141,7 +168,7 @@ function home(){
   })()}
   <div class="grid">
   <button class="tile main" onclick="go('todayEval')"><b>✅</b>تقييم حصة اليوم</button>
-  ${[['students','👥','الطلاب'],['classes','🏫','الصفوف'],['subjects','📚','المواد'],['reports','📊','التقارير'],['backup','💾','نسخ احتياطي']].map(x=>`<button class="tile" onclick="go('${x[0]}')"><b>${x[1]}</b>${x[2]}</button>`).join('')}</div>
+  ${[['students','👥','الطلاب'],['classes','🏫','الصفوف'],['subjects','📚','المواد'],['reports','📊','التقارير']].map(x=>`<button class="tile" onclick="go('${x[0]}')"><b>${x[1]}</b>${x[2]}</button>`).join('')}</div>
   <p class="mut">تُحفظ البيانات في هذا المتصفح ولا تحتاج إنترنت.</p>`;
 }
 
@@ -465,7 +492,7 @@ function evalV(){
   if(S.k!==k){S.k=k;S.rows=JSON.parse(JSON.stringify((db.evals[k]||{}).rows||{}));S.topic=(db.evals[k]||{}).topic||''}
   const done=Object.values(S.rows).filter(r=>rowScore(r)!==null).length;
   const sched=e.s?isScheduled(e.s,e.d,e.p):true;
-  return `<div class="row"><h1 class="sp">تقييم حصة</h1><button class="btn sm" onclick="saveEval()">💾 حفظ الحصة</button></div><div class="card"><label>الصف</label><select onchange="setE('c',this.value)">${db.classes.map(c=>`<option value="${c.id}" ${c.id===e.c?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+  return `<h1>تقييم حصة</h1><div class="card"><label>الصف</label><select onchange="setE('c',this.value)">${db.classes.map(c=>`<option value="${c.id}" ${c.id===e.c?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
   <label>المادة</label><select onchange="setE('s',this.value)">${subs.map(x=>`<option value="${x.id}" ${x.id===e.s?'selected':''}>${esc(x.name)}</option>`).join('')||'<option value="">لا توجد مواد لهذا الصف</option>'}</select>
   <div class="row"><div class="sp"><label>التاريخ</label><input type="date" value="${e.d}" onchange="setE('d',this.value)"></div><div class="sp"><label>الحصة</label><select onchange="setE('p',+this.value)">${[1,2,3,4,5,6,7].map(x=>`<option value="${x}" ${x===e.p?'selected':''}>${x}</option>`).join('')}</select></div></div>
   <label>موضوع الحصة (اختياري)</label><input placeholder="مثال: القسمة على رقمين" value="${esc(S.topic||'')}" oninput="S.topic=this.value" style="margin-bottom:0"></div>
@@ -477,14 +504,15 @@ function evalV(){
   <div class="row"><button class="btn ${S.seatView?'sec':''} sm sp" onclick="S.seatView=false;render()">📋 قائمة</button><button class="btn ${S.seatView?'':'sec'} sm sp" onclick="S.seatView=true;render()">🪑 مخطط المقاعد</button></div>
   ${S.seatView?'':`<input id="eq" placeholder="بحث عن طالب بالاسم أو الرقم الأكاديمي" value="${esc(S.eq||'')}" oninput="S.eq=this.value;renderEvalList()">`}
   <div id="evl">${S.seatView?seatGridHtml(sts):evalListHtml(sts)}</div>
-  <button class="btn" style="width:100%;padding:14px" onclick="saveEval()">حفظ الحصة</button>`;
+  <div style="height:70px"></div>`;
 }
 function evalListHtml(sts){
   const q=(S.eq||'').trim();
   const list=q?sts.filter(s=>s.name.includes(q)||s.num.includes(q)):sts;
   return list.map(s=>{const r=S.rows[s.id]||{},at=r.att||'p',c=r.c||{};return `<div class="card"><div class="row">${av(s)}<b class="sp">${esc(s.name)}</b></div>
   <div class="rb" style="grid-template-columns:repeat(4,1fr)">${['p','l','e','a'].map(ak=>`<button class="${ATT[ak][1]} ${at===ak?'on':''}" onclick="setAtt('${s.id}','${ak}')">${ATT[ak][0]}</button>`).join('')}</div>
-  <div style="${at==='a'?'opacity:.45':''}">${CRIT.map(cr=>`<div class="mut" style="font-size:12px;margin-top:6px">${cr[1]}</div><div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c[cr[0]]===v?'on':''}" onclick="rateC('${s.id}','${cr[0]}',${v})">${RT[v][0]}</button>`).join('')}</div>`).join('')}</div>
+  ${partUI(s.id,'list')}
+  <div style="${at==='a'?'opacity:.45':''}">${CRIT().map(cr=>`<div class="mut" style="font-size:12px;margin-top:6px">${cr[1]}</div><div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c[cr[0]]===v?'on':''}" onclick="rateC('${s.id}','${cr[0]}',${v})">${RT[v][0]}</button>`).join('')}</div>`).join('')}</div>
   <div class="qnwrap">${QN.map(t=>{const active=(r.n||'').split('، ').includes(t);return `<button type="button" class="${active?'on':''}" onclick="addQN('${s.id}',this)" data-t="${esc(t)}">${esc(t)}</button>`}).join('')}</div>
   <input placeholder="ملاحظة (اختياري)" value="${esc(r.n||'')}" oninput="note('${s.id}',this.value)" style="margin-bottom:0"></div>`}).join('')||'<p class="mut">لا يوجد طلاب مطابقون.</p>';
 }
@@ -514,10 +542,21 @@ function openSeatRate(id){
   const r=S.rows[id]||{},at=r.att||'p',c=r.c||{};
   dlg(`<div class="row">${av(s)}<b class="sp">${esc(s.name)}</b></div>
   <div class="rb" style="grid-template-columns:repeat(4,1fr)">${['p','l','e','a'].map(ak=>`<button class="${ATT[ak][1]} ${at===ak?'on':''}" onclick="setAtt('${id}','${ak}');openSeatRate('${id}')">${ATT[ak][0]}</button>`).join('')}</div>
-  ${CRIT.map(cr=>`<div class="mut" style="font-size:12px;margin-top:6px">${cr[1]}</div><div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c[cr[0]]===v?'on':''}" onclick="rateC('${id}','${cr[0]}',${v});openSeatRate('${id}')">${RT[v][0]}</button>`).join('')}</div>`).join('')}
+  ${partUI(id,'seat')}
+  ${CRIT().map(cr=>`<div class="mut" style="font-size:12px;margin-top:6px">${cr[1]}</div><div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c[cr[0]]===v?'on':''}" onclick="rateC('${id}','${cr[0]}',${v});openSeatRate('${id}')">${RT[v][0]}</button>`).join('')}</div>`).join('')}
   <button class="btn sec sp" style="width:100%;margin-top:10px" onclick="closeD();render()">تم</button>`);
 }
 function setE(k,v){S.e[k]=v;if(k==='c'){S.e.s='';S.eq=''}render()}
+function suggestFromCount(n){return n<=0?1:n<=2?2:n<=4?3:4}
+function partUI(id,ctx){
+  const n=(S.rows[id]&&S.rows[id].pc)||0;
+  const lbl=RT[suggestFromCount(n)][0];
+  return `<div class="row" style="align-items:center;margin:6px 0 2px"><span class="mut sp" style="font-size:12px">🙋 عدد المشاركات: <b style="color:var(--tx)">${n}</b></span><button type="button" class="btn sec sm" onclick="bumpPart('${id}','${ctx}',-1)">-1</button><button type="button" class="btn sec sm" onclick="bumpPart('${id}','${ctx}',1)">+1 مشاركة</button></div>
+  <button type="button" class="btn sec sm" style="width:100%;margin-bottom:6px" onclick="applySuggest('${id}','${ctx}')">🎯 اقتراح تقييم المشاركة (${lbl})</button>`;
+}
+function bumpPart(id,ctx,delta){const row=S.rows[id]=S.rows[id]||{};row.pc=Math.max(0,(row.pc||0)+delta);refreshCtx(ctx,id)}
+function applySuggest(id,ctx){const row=S.rows[id]=S.rows[id]||{};row.c=row.c||{};row.c.par=suggestFromCount(row.pc||0);refreshCtx(ctx,id)}
+function refreshCtx(ctx,id){if(ctx==='list')renderEvalList();else if(ctx==='random')renderRandomPick();else if(ctx==='seat')openSeatRate(id)}
 function pickRandomStudent(){
   const sts=db.students.filter(x=>x.classId===S.e.c);
   if(!sts.length)return toast('لا يوجد طلاب في هذا الصف');
@@ -539,6 +578,7 @@ function renderRandomPick(){
   const sts=db.students.filter(x=>x.classId===S.e.c),used=(S.rndUsed&&S.rndUsed[S.e.c])||[],remainCount=Math.max(0,sts.length-used.length);
   dlg(`<div style="text-align:center;padding:12px 0"><div class="mut" style="margin-bottom:6px">🎲 الطالب المختار</div><img src="${s.photo||NOAV}" class="av big" style="width:120px;height:120px"><h2 style="margin:14px 0 2px">${esc(s.name)}</h2><p class="mut">${esc(s.num)} · ${esc(cn(s.classId))}</p>
   <p class="mut" style="font-size:12px">باقي ${remainCount} من ${sts.length} لم يُختاروا في هذه الجولة</p></div>
+  ${partUI(s.id,'random')}
   <div class="mut" style="font-size:13px;margin-bottom:4px">تقييم المشاركة الآن:</div>
   <div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c.par===v?'on':''}" onclick="rateParticipation('${s.id}',${v})">${RT[v][0]}</button>`).join('')}</div>
   <div class="row" style="margin-top:10px"><button class="btn sp" onclick="pickRandomStudent()">🎲 طالب آخر</button><button class="btn sec sp" onclick="closeD();render()">إغلاق</button></div>
@@ -576,13 +616,13 @@ function addQN(id,btn){
   S.rows[id]=Object.assign(S.rows[id]||{},{n:parts.join('، ')});render();
 }
 function setAtt(id,v){S.rows[id]=Object.assign(S.rows[id]||{},{att:v});render()}
-function allGood(){db.students.filter(x=>x.classId===S.e.c).forEach(s=>{const row=S.rows[s.id]=S.rows[s.id]||{};row.c={};CRIT.forEach(cr=>row.c[cr[0]]=4)});render()}
+function allGood(){db.students.filter(x=>x.classId===S.e.c).forEach(s=>{const row=S.rows[s.id]=S.rows[s.id]||{};row.c={};CRIT().forEach(cr=>row.c[cr[0]]=4)});render()}
 function allPresent(){db.students.filter(x=>x.classId===S.e.c).forEach(s=>{S.rows[s.id]=Object.assign(S.rows[s.id]||{},{att:'p'})});render()}
 function saveEval(){
   const e=S.e;if(!e.s)return toast('اختر المادة أولاً');
   const sts=db.students.filter(x=>x.classId===e.c);
   const rows={};let any=false;
-  sts.forEach(s=>{const r=S.rows[s.id]||{};const row={att:r.att||'p'};if(r.c&&Object.keys(r.c).length)row.c=r.c;if(r.n)row.n=r.n;if(row.c||row.att!=='p')any=true;rows[s.id]=row});
+  sts.forEach(s=>{const r=S.rows[s.id]||{};const row={att:r.att||'p'};if(r.c&&Object.keys(r.c).length)row.c=r.c;if(r.n)row.n=r.n;if(r.pc)row.pc=r.pc;if(row.c||row.att!=='p'||row.pc)any=true;rows[s.id]=row});
   if(!any)return toast('قيّم معياراً واحداً أو سجّل حضور طالب على الأقل');
   db.evals[S.k]={c:e.c,s:e.s,d:e.d,p:e.p,topic:(S.topic||'').trim(),rows};save();toast('تم حفظ الحصة ✓');render();
 }
@@ -590,7 +630,7 @@ function saveEval(){
 /* ===== التقارير ===== */
 function hist(id,f){
   const o=[];Object.values(db.evals).forEach(e=>{const r=e.rows[id];const sc=rowScore(r);if(sc===null)return;
-    if(f.s&&e.s!==f.s)return;if(f.from&&e.d<f.from)return;if(f.to&&e.d>f.to)return;o.push({d:e.d,p:e.p,s:e.s,c:r.c||null,score:sc,n:r.n,att:r.att||'p'})});
+    if(f.s&&e.s!==f.s)return;if(f.from&&e.d<f.from)return;if(f.to&&e.d>f.to)return;o.push({d:e.d,p:e.p,s:e.s,c:r.c||null,score:sc,n:r.n,att:r.att||'p',pc:r.pc||0})});
   return o.sort((a,b)=>a.d===b.d?a.p-b.p:a.d<b.d?-1:1);
 }
 function attHist(id,f){
@@ -641,7 +681,7 @@ function reportsV(){
   const f=S.f,tab=S.rtab||'students',list=db.students.filter(s=>(!f.c||s.classId===f.c)&&(!f.st||s.id===f.st));
   const rows=list.map(s=>{
     const h=hist(s.id,f),ah=attHist(s.id,{s:f.s,from:f.from,to:f.to}),{ac,an}=attBreak(ah);
-    return{s,h,ah,ac,an,a:avg(h),crAvgs:CRIT.map(cr=>({label:cr[1],v:critAvg(h,cr[0])}))};
+    return{s,h,ah,ac,an,a:avg(h),crAvgs:CRIT().map(cr=>({label:cr[1],v:critAvg(h,cr[0])}))};
   });
   const ids=new Set(list.map(s=>s.id)),alerts=alertList().filter(x=>ids.has(x.s.id)),alertIds=new Set(alerts.map(x=>x.s.id));
   const allH=rows.flatMap(x=>x.h),allAtt=rows.flatMap(x=>x.ah);
@@ -721,12 +761,12 @@ function exportSessions(){
 function exportReport(){
   if(typeof XLSX==='undefined')return toast('تعذر تحميل مكتبة الإكسل');
   const f=S.f,list=db.students.filter(s=>(!f.c||s.classId===f.c)&&(!f.st||s.id===f.st));
-  const data=[['الطالب','الرقم الأكاديمي','الصف','المستوى المبدئي','عدد التقييمات','المتوسط العام /4',...CRIT.map(cr=>cr[1]+' /4'),'نسبة الحضور %']];
+  const data=[['الطالب','الرقم الأكاديمي','الصف','المستوى المبدئي','عدد التقييمات','المتوسط العام /4',...CRIT().map(cr=>cr[1]+' /4'),'نسبة الحضور %']];
   list.forEach(s=>{
     const h=hist(s.id,f),ah=attHist(s.id,{s:f.s,from:f.from,to:f.to});
     const pPct=ah.length?Math.round(ah.filter(x=>x.att==='p').length/ah.length*100):'';
     data.push([s.name,s.num,cn(s.classId),LV[s.level][0],h.length,h.length?avg(h).toFixed(2):'',
-      ...CRIT.map(cr=>{const v=critAvg(h,cr[0]);return v?v.toFixed(2):''}),pPct]);
+      ...CRIT().map(cr=>{const v=critAvg(h,cr[0]);return v?v.toFixed(2):''}),pPct]);
   });
   const ws=XLSX.utils.aoa_to_sheet(data),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'تقرير');
   saveBlob(new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'تقرير_الطلاب.xlsx');
@@ -744,25 +784,35 @@ function profileV(){
   const badges=[wk&&wk.s.id===s.id?'🏆 طالب الأسبوع':'',S.revealMonth&&mo&&mo.s.id===s.id?'🏆 طالب الشهر':''].filter(Boolean);
   return `<button class="btn sec sm noprint" onclick="go('reports')">← رجوع</button><div class="card row" style="margin-top:10px"><img class="av big" src="${s.photo||NOAV}"><div class="sp"><h2 style="margin:0">${esc(s.name)}</h2><div class="mut">${esc(s.num)} · ${esc(cn(s.classId))}<br>المستوى المبدئي: ${LV[s.level][0]}</div>${badges.length?`<div style="margin-top:6px">${badges.map(b=>`<span class="chip g" style="margin-left:4px">${b}</span>`).join('')}</div>`:''}</div></div>
   <div class="card"><b>الأداء الحالي:</b> ${a?a.toFixed(1)+' من 4':'—'}<div class="mut">${cmp}</div><div style="height:8px"></div>${h.length?bar(h):''}
-  ${CRIT.map(cr=>critAvg(h,cr[0])).some(v=>v!==null)?`<div class="mut" style="font-size:13px;margin-top:6px">${CRIT.map(cr=>{const v=critAvg(h,cr[0]);return v!==null?`${cr[1]} ${v.toFixed(1)}/4`:''}).filter(Boolean).join(' · ')}</div>`:''}</div>
+  ${CRIT().map(cr=>critAvg(h,cr[0])).some(v=>v!==null)?`<div class="mut" style="font-size:13px;margin-top:6px">${CRIT().map(cr=>{const v=critAvg(h,cr[0]);return v!==null?`${cr[1]} ${v.toFixed(1)}/4`:''}).filter(Boolean).join(' · ')}</div>`:''}</div>
   ${ah.length?`<div class="card"><b>الحضور</b><div class="bar" style="margin-top:6px">${['p','l','e','a'].map(k=>`<div style="width:${ac[k]/an*100}%;background:var(--${ATT[k][1]})"></div>`).join('')}</div><div class="mut" style="font-size:12px">${['p','l','e','a'].map(k=>`${ATT[k][0]} ${Math.round(ac[k]/an*100)}%`).join(' · ')}</div></div>`:''}
+  ${h.length?`<div class="card"><b>🙋 المشاركة</b><div class="mut" style="margin-top:4px">متوسط المشاركات لكل حصة: <b style="color:var(--tx)">${(h.reduce((a,x)=>a+(x.pc||0),0)/h.length).toFixed(1)}</b> · أعلى مشاركة مسجَّلة: ${Math.max(...h.map(x=>x.pc||0))}</div></div>`:''}
   <div class="card"><b>تطور الأداء (متوسط اليوم)</b>${pts.length?svg:'<p class="mut">لا توجد بيانات.</p>'}</div>
-  <div class="card sc"><b>السجل</b><table><tr><th>التاريخ</th><th>المادة</th>${CRIT.map(cr=>`<th>${cr[1]}</th>`).join('')}<th>الحضور</th><th>ملاحظة</th></tr>${h.slice().reverse().map(x=>`<tr><td>${x.d} (ح${x.p})</td><td>${esc(sn(x.s))}</td>${CRIT.map(cr=>{const v=x.c&&x.c[cr[0]];return `<td>${v?`<span class="chip ${RT[v][1]}">${RT[v][0]}</span>`:'—'}</td>`}).join('')}<td>${ATT[x.att||'p'][0]}</td><td>${esc(x.n||'')}</td></tr>`).join('')}</table></div>
+  <div class="card sc"><b>السجل</b><table><tr><th>التاريخ</th><th>المادة</th>${CRIT().map(cr=>`<th>${cr[1]}</th>`).join('')}<th>🙋</th><th>الحضور</th><th>ملاحظة</th></tr>${h.slice().reverse().map(x=>`<tr><td>${x.d} (ح${x.p})</td><td>${esc(sn(x.s))}</td>${CRIT().map(cr=>{const v=x.c&&x.c[cr[0]];return `<td>${v?`<span class="chip ${RT[v][1]}">${RT[v][0]}</span>`:'—'}</td>`}).join('')}<td>${x.pc||0}</td><td>${ATT[x.att||'p'][0]}</td><td>${esc(x.n||'')}</td></tr>`).join('')}</table></div>
   <div class="row"><button class="btn sec noprint sp" onclick="print()">طباعة / حفظ PDF</button><button class="btn sec noprint sp" onclick="exportProfile('${s.id}')">تصدير إكسل</button></div>`;
 }
 function exportProfile(id){
   if(typeof XLSX==='undefined')return toast('تعذر تحميل مكتبة الإكسل');
   const s=db.students.find(x=>x.id===id),h=hist(id,{});
-  const data=[['التاريخ','الحصة','المادة',...CRIT.map(cr=>cr[1]),'الحضور','ملاحظة']];
-  h.forEach(x=>data.push([x.d,x.p,sn(x.s),...CRIT.map(cr=>{const v=x.c&&x.c[cr[0]];return v?RT[v][0]:''}),ATT[x.att||'p'][0],x.n||'']));
+  const data=[['التاريخ','الحصة','المادة',...CRIT().map(cr=>cr[1]),'عدد المشاركات','الحضور','ملاحظة']];
+  h.forEach(x=>data.push([x.d,x.p,sn(x.s),...CRIT().map(cr=>{const v=x.c&&x.c[cr[0]];return v?RT[v][0]:''}),x.pc||0,ATT[x.att||'p'][0],x.n||'']));
   const ws=XLSX.utils.aoa_to_sheet(data),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'السجل');
   saveBlob(new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`تقرير_${s.name}.xlsx`);
 }
 
 /* ===== النسخ الاحتياطي (نص JSON) ===== */
 function backupV(){
-  const fb=fbCfg();
-  return `<h1>نسخ احتياطي</h1>
+  const fb=fbCfg(),cr=CRIT(),curSize=document.body.style.fontSize||'16px';
+  const th=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+  return `<h1>⚙️ الإعدادات</h1>
+  <div class="card"><b>🌙 الوضع الداكن</b><p class="mut">المظهر الحالي: ${th==='dark'?'داكن':'فاتح'}</p><button class="btn sec sm" onclick="toggleTheme()">${th==='dark'?'☀️ التحويل للوضع الفاتح':'🌙 التحويل للوضع الداكن'}</button></div>
+  <div class="card"><b>🔤 حجم الخط</b><p class="mut">يكبّر النص الأساسي في عناصر الواجهة. الحجم الحالي: ${curSize}</p>
+  <div class="row">${[14,16,18,20,22].map(n=>`<button class="btn ${curSize===n+'px'?'':'sec'} sm" onclick="setFontSize(${n})">${n}</button>`).join('')}</div></div>
+  <div class="card"><b>🏷️ أسماء معايير التقييم</b><p class="mut">غيّر مسمّيات المعايير الثلاثة حسب ما يناسبك (لن يتغيّر أي من بياناتك المحفوظة).</p>
+  <label>${esc(cr[0][1])}</label><input id="cn0" value="${esc(cr[0][1])}">
+  <label>${esc(cr[1][1])}</label><input id="cn1" value="${esc(cr[1][1])}">
+  <label>${esc(cr[2][1])}</label><input id="cn2" value="${esc(cr[2][1])}">
+  <button class="btn sec sm" onclick="saveCritLabels()">حفظ الأسماء</button></div>
   <div class="card"><b>تصدير</b><p class="mut">يحفظ ملف JSON على جهازك يحتوي كل البيانات (الصفوف، المواد، الطلاب، التقييمات).</p><button class="btn sm" onclick="exportBackup()">📥 تنزيل نسخة احتياطية</button></div>
   <div class="card"><b>استيراد</b><p class="mut">اختر ملف نسخة احتياطية سابقة (JSON). سيستبدل هذا كل البيانات الحالية.</p><input type="file" id="bf" accept=".json,application/json" onchange="importBackupFile(this)"><div class="er" id="er"></div></div>
   <div class="card"><b>المزامنة السحابية (Firebase) — اختياري</b>
