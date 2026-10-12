@@ -161,11 +161,6 @@ function home(){
   <div class="card sp" style="text-align:center;background:${gaps.length?'rgba(224,138,30,.1)':'var(--card)'};border-color:${gaps.length?'var(--o)':'var(--bd)'}" onclick="S.rtab='plan';go('reports')"><div style="font-size:20px">📄</div><div style="font-size:24px;font-weight:800;margin-top:2px">${gaps.length}</div><div class="mut" style="font-size:12px">توثيق متأخر</div></div>
   </div>
   ${missed.length?`<h2>⏰ متابعة آخر النهار — حصص لم تُقيَّم بعد</h2>${missed.map(x=>`<div class="card row" onclick="goToSession('${x.c}','${x.s}',${x.p})" style="cursor:pointer;border-color:var(--o)"><div class="sp"><b>${esc(cn(x.c))}</b> · ${esc(sn(x.s))} · حصة ${x.p}</div><span class="mut">قيّم الآن ←</span></div>`).join('')}`:''}
-  ${(()=>{const w=studentOfPeriod(7),m=studentOfPeriod(30);if(!w&&!m)return'';
-    const card=(x,label)=>x?`<div class="card sp" style="text-align:center" onclick="S.pid='${x.s.id}';go('profile')">${av(x.s)}<div style="font-weight:800;margin-top:4px">${esc(x.s.name)}</div><div class="mut" style="font-size:12px">${label} · ${x.a.toFixed(1)}/4</div></div>`:'';
-    const monthCard=m?(S.revealMonth?card(m,'طالب الشهر'):`<div class="card sp" style="text-align:center"><div style="font-size:30px">🎁</div><div class="mut" style="margin:4px 0">طالب الشهر مخفي</div><button class="btn sec sm" onclick="S.revealMonth=true;render()">✨ كشف طالب الشهر</button></div>`):'';
-    return `<h2>🏆 طلاب متميزون</h2><div class="row">${card(w,'طالب الأسبوع')}${monthCard}</div>`;
-  })()}
   <div class="grid">
   <button class="tile main" onclick="go('todayEval')"><b>✅</b>تقييم حصة اليوم</button>
   ${[['students','👥','الطلاب'],['classes','🏫','الصفوف'],['subjects','📚','المواد'],['reports','📊','التقارير']].map(x=>`<button class="tile" onclick="go('${x[0]}')"><b>${x[1]}</b>${x[2]}</button>`).join('')}</div>
