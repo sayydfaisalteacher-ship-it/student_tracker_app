@@ -294,7 +294,16 @@ function studentsV(){
   <select onchange="S.sc=this.value;render()"><option value="">كل الصفوف</option>${db.classes.map(c=>`<option value="${c.id}" ${cf===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
   <div id="sl">${stuList(l)}</div>`;
 }
-function stuList(l){return l.map(s=>`<div class="card row">${av(s)}<div class="sp" onclick="S.pid='${s.id}';go('profile')" style="cursor:pointer"><b>${esc(s.name)}</b><div class="mut">${esc(s.num)} · ${esc(cn(s.classId))} · ${LV[s.level][0]}</div></div><button class="btn sec sm" onclick="stuForm('${s.id}')">تعديل</button><button class="btn del sm" onclick="delStu('${s.id}')">حذف</button></div>`).join('')||'<p class="mut">لا يوجد طلاب مطابقون.</p>'}
+function topStudentOfClass(classId){
+  let best=null,bestA=-1;
+  db.students.filter(s=>s.classId===classId).forEach(s=>{const h=hist(s.id,{});if(h.length>=3){const a=avg(h);if(a>bestA){bestA=a;best=s.id}}});
+  return best;
+}
+function topStudentIds(){return new Set(db.classes.map(c=>topStudentOfClass(c.id)).filter(Boolean))}
+function stuList(l){
+  const topIds=topStudentIds();
+  return l.map(s=>{const top=topIds.has(s.id);return `<div class="card row" style="${top?'border-color:var(--pri)':''}">${av(s)}<div class="sp" onclick="S.pid='${s.id}';go('profile')" style="cursor:pointer"><b>${esc(s.name)}</b>${top?' <span class="chip g" style="font-size:11px">🏆 متميز الصف</span>':''}<div class="mut">${esc(s.num)} · ${esc(cn(s.classId))} · ${LV[s.level][0]}</div></div><button class="btn sec sm" onclick="stuForm('${s.id}')">تعديل</button><button class="btn del sm" onclick="delStu('${s.id}')">حذف</button></div>`}).join('')||'<p class="mut">لا يوجد طلاب مطابقون.</p>';
+}
 function render2(){ // تحديث القائمة فقط أثناء البحث
   const q=S.q.trim(),cf=S.sc||'';
   document.getElementById('sl').innerHTML=stuList(db.students.filter(s=>(!cf||s.classId===cf)&&(!q||s.name.includes(q)||s.num.includes(q))));
