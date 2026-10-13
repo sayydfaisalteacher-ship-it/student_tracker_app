@@ -239,15 +239,18 @@ function slotRow(d,p){
   return `<div class="row sl"><select style="flex:2" onchange="recheckAllLessonDates()">${DAYS.map((x,i)=>`<option value="${i}" ${i==d?'selected':''}>${x}</option>`).join('')}</select><select style="flex:1" onchange="recheckAllLessonDates()">${[1,2,3,4,5,6,7].map(x=>`<option value="${x}" ${x==p?'selected':''}>حصة ${x}</option>`).join('')}</select><button class="btn del sm" onclick="this.parentNode.remove();recheckAllLessonDates()">×</button></div>`;
 }
 function addSlot(){document.getElementById('sls').insertAdjacentHTML('beforeend',slotRow(0,1));recheckAllLessonDates()}
-function normCur(arr){return(arr||[]).map(x=>typeof x==='string'?{t:x,d:''}:{t:x.t||'',d:x.d||''})}
+function normCur(arr){return(arr||[]).map(x=>typeof x==='string'?{t:x,d:'',prep:'',lessonLink:'',lessonImg:'',actLink:'',actImg:'',evalNote:''}:{t:x.t||'',d:x.d||'',prep:x.prep||'',lessonLink:x.lessonLink||'',lessonImg:x.lessonImg||'',actLink:x.actLink||'',actImg:x.actImg||'',evalNote:x.evalNote||''})}
 function lessonTaughtMax(subId){
   const sub=db.subjects.find(x=>x.id===subId);if(!sub)return 0;let max=0;
   (sub.classIds||[]).forEach(cid=>{const c=Object.values(db.evals).filter(e=>e.s===subId&&e.c===cid&&e.topic&&e.topic.trim()).length;if(c>max)max=c});
   return max;
 }
-function lessonRow(t,d,status){
+function lessonRow(t,d,status,subId,idx,extra){
+  extra=extra||{};
   const icon=status==='done'?'✅':status==='late'?'⚠️':'⬜';
-  return `<div class="lnwrap"><div class="row ln" style="align-items:center"><span style="width:20px;text-align:center" title="${status==='done'?'تم تدريسه':status==='late'?'تجاوز الموعد المقترح ولم يُدرَّس بعد':'قادم'}">${icon}</span><input class="lnt" value="${esc(t)}" placeholder="عنوان الدرس" style="flex:2;margin-bottom:0"><input class="lnd" type="date" value="${esc(d)}" style="flex:1;margin-bottom:0" onchange="checkLessonDate(this)"><button type="button" class="btn sec sm" style="padding:4px 9px" onclick="moveLesson(this,-1)" title="تحريك لأعلى">↑</button><button type="button" class="btn sec sm" style="padding:4px 9px" onclick="moveLesson(this,1)" title="تحريك لأسفل">↓</button><button type="button" class="btn del sm" onclick="this.closest('.lnwrap').remove();refreshLessonIcons()">×</button></div><div class="dwarn mut" style="font-size:11px;color:var(--o);margin:0 0 6px"></div></div>`;
+  const hasDetail=extra.prep||extra.lessonLink||extra.lessonImg||extra.actLink||extra.actImg||extra.evalNote;
+  const editBtn=(subId&&idx!==undefined)?`<button type="button" class="btn sec sm" style="padding:4px 9px" onclick="openLessonDetail('${subId}',${idx})" title="تحضير الدرس">${hasDetail?'📝':'✏️'}</button>`:'';
+  return `<div class="lnwrap" data-prep="${esc(extra.prep||'')}" data-llink="${esc(extra.lessonLink||'')}" data-limg="${esc(extra.lessonImg||'')}" data-alink="${esc(extra.actLink||'')}" data-aimg="${esc(extra.actImg||'')}" data-evalnote="${esc(extra.evalNote||'')}"><div class="row ln" style="align-items:center"><span style="width:20px;text-align:center" title="${status==='done'?'تم تدريسه':status==='late'?'تجاوز الموعد المقترح ولم يُدرَّس بعد':'قادم'}">${icon}</span><input class="lnt" value="${esc(t)}" placeholder="عنوان الدرس" style="flex:2;margin-bottom:0"><input class="lnd" type="date" value="${esc(d)}" style="flex:1;margin-bottom:0" onchange="checkLessonDate(this)"><button type="button" class="btn sec sm" style="padding:4px 9px" onclick="moveLesson(this,-1)" title="تحريك لأعلى">↑</button><button type="button" class="btn sec sm" style="padding:4px 9px" onclick="moveLesson(this,1)" title="تحريك لأسفل">↓</button>${editBtn}<button type="button" class="btn del sm" onclick="this.closest('.lnwrap').remove();refreshLessonIcons()">×</button></div><div class="dwarn mut" style="font-size:11px;color:var(--o);margin:0 0 6px"></div></div>`;
 }
 function addLesson(){document.getElementById('lns').insertAdjacentHTML('beforeend',lessonRow('','','upcoming'));refreshLessonIcons()}
 function moveLesson(btn,dir){
@@ -292,19 +295,49 @@ function subForm(id){
   <label>خطة المنهج (اختياري) — عنوان الدرس وتاريخه المقترح، بالترتيب</label>
   <div class="mut" style="font-size:12px;margin-bottom:4px">✅ دُرِّس بالفعل (في صف واحد على الأقل) · ⚠️ تجاوز موعده المقترح ولم يُدرَّس · ⬜ قادم</div>
   <div class="mut" id="dayhint" style="font-size:12px;margin-bottom:6px"></div>
-  <div id="lns" data-taught="${taughtMax}">${cur.map((x,i)=>lessonRow(x.t,x.d,i<taughtMax?'done':(x.d&&x.d<t?'late':'upcoming'))).join('')}</div>
+  <div id="lns" data-taught="${taughtMax}">${cur.map((x,i)=>lessonRow(x.t,x.d,i<taughtMax?'done':(x.d&&x.d<t?'late':'upcoming'),id,i,x)).join('')}</div>
   <button type="button" class="btn sec sm" onclick="addLesson()">+ درس</button>
+  ${id?'<p class="mut" style="font-size:11px">💡 احفظ عنوان وتاريخ أي درس جديد أولاً (زر «حفظ» أسفل)، ثم افتحه مرة أخرى لإضافة تحضيره التفصيلي عبر ✏️.</p>':''}
   <div class="er" id="er"></div><div class="row"><button class="btn sp" onclick="saveSub('${id||''}')">حفظ</button><button class="btn sec sp" onclick="closeD()">إلغاء</button></div>`);
   recheckAllLessonDates();
 }
 function saveSub(id){
   const n=f1.value.trim();if(!n)return err('اسم المادة مطلوب');
-  const curriculum=[...document.querySelectorAll('.ln')].map(r=>({t:r.querySelector('.lnt').value.trim(),d:r.querySelector('.lnd').value})).filter(x=>x.t);
+  const curriculum=[...document.querySelectorAll('.lnwrap')].map(w=>({t:w.querySelector('.lnt').value.trim(),d:w.querySelector('.lnd').value,prep:w.dataset.prep||'',lessonLink:w.dataset.llink||'',lessonImg:w.dataset.limg||'',actLink:w.dataset.alink||'',actImg:w.dataset.aimg||'',evalNote:w.dataset.evalnote||''})).filter(x=>x.t);
   const o={name:n,classIds:[...document.querySelectorAll('.cc:checked')].map(x=>x.value),slots:[...document.querySelectorAll('.sl')].map(r=>{const q=r.querySelectorAll('select');return{d:+q[0].value,p:+q[1].value}}),curriculum};
   if(id)Object.assign(db.subjects.find(x=>x.id===id),o);else db.subjects.push({id:uid(),...o});
   save();closeD();render();
 }
 function delSub(id){ask('حذف المادة وكل تقييماتها؟',()=>{db.subjects=db.subjects.filter(s=>s.id!==id);Object.keys(db.evals).forEach(k=>{if(db.evals[k].s===id)delete db.evals[k]});save();render()})}
+let _ldImg='',_ldAImg='';
+function openLessonDetail(subId,idx){
+  const sub=db.subjects.find(x=>x.id===subId);if(!sub)return;
+  const cur=normCur(sub.curriculum),L=cur[idx];if(!L)return toast('تعذّر العثور على الدرس');
+  _ldImg=L.lessonImg||'';_ldAImg=L.actImg||'';
+  dlg(`<h2>✏️ تحضير: ${esc(L.t)}</h2>
+  <label>التحضير (أهداف الدرس، ملاحظات)</label><textarea id="ldp" rows="3" placeholder="أهداف الدرس، التمهيد، الوسائل...">${esc(L.prep)}</textarea>
+  <label>الدرس — رابط (عرض تقديمي، ملف، إلخ)</label><input id="ldll" placeholder="رابط Google Drive أو أي مصدر" value="${esc(L.lessonLink)}">
+  <div class="row" style="align-items:center"><input type="file" accept="image/*" style="flex:1" onchange="pickLessonImg(this,'l')"><img id="ldlimgp" src="${L.lessonImg||NOAV}" style="width:44px;height:44px;border-radius:8px;object-fit:cover;${L.lessonImg?'':'display:none'}"></div>
+  <label>الأنشطة — رابط</label><input id="ldal" placeholder="رابط ورقة عمل أو نشاط" value="${esc(L.actLink)}">
+  <div class="row" style="align-items:center"><input type="file" accept="image/*" style="flex:1" onchange="pickLessonImg(this,'a')"><img id="ldaimgp" src="${L.actImg||NOAV}" style="width:44px;height:44px;border-radius:8px;object-fit:cover;${L.actImg?'':'display:none'}"></div>
+  <label>تقييم الدرس (كيف سار، ملاحظات لتحسينه)</label><textarea id="ldev" rows="3">${esc(L.evalNote)}</textarea>
+  <p class="mut" style="font-size:11px">💡 الروابط أفضل من الصور لتوفير مساحة التخزين المحلي المحدودة. الصور تُضغط تلقائياً لكن كثرتها تستهلك المساحة (~5 ميغابايت لكل التطبيق).</p>
+  <div class="row"><button class="btn sp" onclick="saveLessonDetail('${subId}',${idx})">حفظ</button><button class="btn sec sp" onclick="subForm('${subId}')">رجوع بدون حفظ</button></div>`);
+}
+function pickLessonImg(inp,which){
+  const f=inp.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{const i=new Image();i.onload=()=>{const c=document.createElement('canvas');c.width=c.height=160;const x=c.getContext('2d'),m=Math.min(i.width,i.height);x.drawImage(i,(i.width-m)/2,(i.height-m)/2,m,m,0,0,160,160);const data=c.toDataURL('image/jpeg',.7);
+    if(which==='l'){_ldImg=data;document.getElementById('ldlimgp').src=data;document.getElementById('ldlimgp').style.display='block'}
+    else{_ldAImg=data;document.getElementById('ldaimgp').src=data;document.getElementById('ldaimgp').style.display='block'}
+  };i.src=r.result};r.readAsDataURL(f);
+}
+function saveLessonDetail(subId,idx){
+  const sub=db.subjects.find(x=>x.id===subId);if(!sub)return;
+  const cur=normCur(sub.curriculum);if(!cur[idx])return;
+  cur[idx].prep=ldp.value.trim();cur[idx].lessonLink=ldll.value.trim();cur[idx].lessonImg=_ldImg;
+  cur[idx].actLink=ldal.value.trim();cur[idx].actImg=_ldAImg;cur[idx].evalNote=ldev.value.trim();
+  sub.curriculum=cur;save();toast('تم حفظ تحضير الدرس ✓');subForm(subId);
+}
 
 
 /* ===== الطلاب ===== */
