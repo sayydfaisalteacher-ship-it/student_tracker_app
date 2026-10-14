@@ -39,6 +39,8 @@ label{font-size:14px;color:var(--mut)}
 .rb button.on.o,.chip.o{background:var(--o);color:#fff;border-color:var(--o)}
 .rb button.on.r,.chip.r{background:var(--r);color:#fff;border-color:var(--r)}
 .chip{display:inline-block;border-radius:20px;padding:2px 10px;font-size:13px;font-weight:700}
+.backbar{position:sticky;top:0;background:var(--bg);z-index:3;padding:6px 0;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.backbar button{flex:none}
 .qnwrap{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 6px}
 .qnwrap button{font-size:11.5px;padding:4px 9px;border-radius:14px;border:1px solid var(--bd);background:var(--bg);color:var(--mut);cursor:pointer}
 .qnwrap button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
@@ -117,6 +119,7 @@ function toast(t){const e=document.getElementById('toast');e.textContent=t;e.sty
 let V='home',S={f:{}};
 const NAV=[['home','🏠','الرئيسية'],['eval','✅','تقييم'],['students','👥','الطلاب'],['classes','🏫','الصفوف'],['subjects','📚','المواد'],['reports','📊','التقارير']];
 function go(v){
+  if(V!=='profile'&&V!=='backup')S.lastMain=V;
   if(v==='todayEval'){
     if(isHoliday(today()))toast('تنبيه: اليوم مُسجَّل كعطلة دراسية 📅');
     const di=new Date().getDay(),hit=db.subjects.map(s=>({s,sl:s.slots.find(x=>x.d===di)})).find(x=>x.sl);
@@ -124,6 +127,8 @@ function go(v){
   }
   V=v;render();scrollTo(0,0)
 }
+function viewLabel(v){return({home:'الرئيسية',eval:'تقييم',students:'الطلاب',classes:'الصفوف',subjects:'المواد',reports:'التقارير',backup:'الإعدادات'})[v]||'الرئيسية'}
+function buzz(){try{if(navigator.vibrate)navigator.vibrate(15)}catch(e){}}
 function render(){
   document.getElementById('nav').innerHTML=NAV.map(n=>`<button class="${V===n[0]?'on':''}" onclick="go('${n[0]}')"><b>${n[1]}</b>${n[2]}</button>`).join('');
   document.getElementById('app').innerHTML=({home,eval:evalV,students:studentsV,classes:classesV,subjects:subjectsV,reports:reportsV,profile:profileV,backup:backupV})[V]();
@@ -179,7 +184,7 @@ function classForm(id){
 function saveClass(id){
   const n=f1.value.trim();if(!n)return err('اسم الصف مطلوب');
   if(id)db.classes.find(x=>x.id===id).name=n;else db.classes.push({id:uid(),name:n});
-  save();closeD();render();
+  save();buzz();closeD();render();
 }
 function delClass(id){
   if(db.students.some(s=>s.classId===id))return toast('انقل طلاب هذا الصف أو احذفهم أولاً');
@@ -309,7 +314,7 @@ function saveSub(id){
   const curriculum=[...document.querySelectorAll('.lnwrap')].map(w=>({t:w.querySelector('.lnt').value.trim(),d:w.querySelector('.lnd').value,prep:w.dataset.prep||'',lessonLink:w.dataset.llink||'',lessonImg:w.dataset.limg||'',actLink:w.dataset.alink||'',actImg:w.dataset.aimg||'',evalNote:w.dataset.evalnote||''})).filter(x=>x.t);
   const o={name:n,classIds:[...document.querySelectorAll('.cc:checked')].map(x=>x.value),slots:[...document.querySelectorAll('.sl')].map(r=>{const q=r.querySelectorAll('select');return{d:+q[0].value,p:+q[1].value}}),curriculum};
   if(id)Object.assign(db.subjects.find(x=>x.id===id),o);else db.subjects.push({id:uid(),...o});
-  save();closeD();render();
+  save();buzz();closeD();render();
 }
 function delSub(id){ask('حذف المادة وكل تقييماتها؟',()=>{db.subjects=db.subjects.filter(s=>s.id!==id);Object.keys(db.evals).forEach(k=>{if(db.evals[k].s===id)delete db.evals[k]});save();render()})}
 let _ldImg='',_ldAImg='';
@@ -339,7 +344,7 @@ function saveLessonDetail(subId,idx){
   const cur=normCur(sub.curriculum);if(!cur[idx])return;
   cur[idx].prep=ldp.value.trim();cur[idx].lessonLink=ldll.value.trim();cur[idx].lessonImg=_ldImg;
   cur[idx].actLink=ldal.value.trim();cur[idx].actImg=_ldAImg;cur[idx].evalNote=ldev.value.trim();
-  sub.curriculum=cur;save();toast('تم حفظ تحضير الدرس ✓');subForm(subId);
+  sub.curriculum=cur;save();buzz();toast('تم حفظ تحضير الدرس ✓');subForm(subId);
 }
 
 
@@ -433,7 +438,7 @@ function saveStu(id){
   if(db.students.some(s=>s.num===u&&s.id!==id))return err('هذا الرقم الأكاديمي مستخدم لطالب آخر');
   const o={name:n,num:u,classId:f3.value,level:f4.value,photo:PH};
   if(id)Object.assign(db.students.find(x=>x.id===id),o);else db.students.push({id:uid(),...o});
-  save();closeD();render();
+  save();buzz();closeD();render();
 }
 function delStu(id){ask('حذف الطالب وكل تقييماته؟',()=>{db.students=db.students.filter(s=>s.id!==id);Object.values(db.evals).forEach(e=>delete e.rows[id]);save();render()})}
 
@@ -511,7 +516,7 @@ function processImport(rows){
   save();render();
   document.getElementById('impr').innerHTML=`<div class="card"><b>تمت المعالجة:</b> ${added} طالب جديد، ${updated} طالب محدَّث${errors.length?('، '+errors.length+' سطر بها ملاحظات'):''}</div>`+
    (errors.length?`<div class="card" style="border-color:var(--o)"><b>ملاحظات:</b><ul style="margin:6px 0;padding-inline-start:18px">${errors.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:'');
-  toast('تم الاستيراد ✓');
+  buzz();toast('تم الاستيراد ✓');
 }
 
 /* ===== تقييم الحصة ===== */
@@ -655,7 +660,7 @@ function saveEval(){
   const rows={};let any=false;
   sts.forEach(s=>{const r=S.rows[s.id]||{};const row={att:r.att||'p'};if(r.c&&Object.keys(r.c).length)row.c=r.c;if(r.n)row.n=r.n;if(r.pc)row.pc=r.pc;if(row.c||row.att!=='p'||row.pc)any=true;rows[s.id]=row});
   if(!any)return toast('قيّم معياراً واحداً أو سجّل حضور طالب على الأقل');
-  db.evals[S.k]={c:e.c,s:e.s,d:e.d,p:e.p,topic:(S.topic||'').trim(),rows};save();toast('تم حفظ الحصة ✓');render();
+  db.evals[S.k]={c:e.c,s:e.s,d:e.d,p:e.p,topic:(S.topic||'').trim(),rows};save();buzz();toast('تم حفظ الحصة ✓');render();
 }
 
 /* ===== التقارير ===== */
@@ -813,7 +818,7 @@ function profileV(){
   const ah=attHist(s.id,{s:f.s,from:f.from,to:f.to}),{ac,an}=attBreak(ah);
   const wk=studentOfPeriod(7),mo=studentOfPeriod(30);
   const badges=[wk&&wk.s.id===s.id?'🏆 طالب الأسبوع':'',S.revealMonth&&mo&&mo.s.id===s.id?'🏆 طالب الشهر':''].filter(Boolean);
-  return `<button class="btn sec sm noprint" onclick="go('reports')">← رجوع</button><div class="card row" style="margin-top:10px"><img class="av big" src="${s.photo||NOAV}"><div class="sp"><h2 style="margin:0">${esc(s.name)}</h2><div class="mut">${esc(s.num)} · ${esc(cn(s.classId))}<br>المستوى المبدئي: ${LV[s.level][0]}</div>${badges.length?`<div style="margin-top:6px">${badges.map(b=>`<span class="chip g" style="margin-left:4px">${b}</span>`).join('')}</div>`:''}</div></div>
+  return `<div class="backbar noprint"><button class="btn sec sm" onclick="go(S.lastMain||'reports')">← رجوع</button><span class="mut" style="font-size:12px">${viewLabel(S.lastMain)} › ${esc(s.name)}</span></div><div class="card row"><img class="av big" src="${s.photo||NOAV}"><div class="sp"><h2 style="margin:0">${esc(s.name)}</h2><div class="mut">${esc(s.num)} · ${esc(cn(s.classId))}<br>المستوى المبدئي: ${LV[s.level][0]}</div>${badges.length?`<div style="margin-top:6px">${badges.map(b=>`<span class="chip g" style="margin-left:4px">${b}</span>`).join('')}</div>`:''}</div></div>
   <div class="card"><b>الأداء الحالي:</b> ${a?a.toFixed(1)+' من 4':'—'}<div class="mut">${cmp}</div><div style="height:8px"></div>${h.length?bar(h):''}
   ${CRIT().map(cr=>critAvg(h,cr[0])).some(v=>v!==null)?`<div class="mut" style="font-size:13px;margin-top:6px">${CRIT().map(cr=>{const v=critAvg(h,cr[0]);return v!==null?`${cr[1]} ${v.toFixed(1)}/4`:''}).filter(Boolean).join(' · ')}</div>`:''}</div>
   ${ah.length?`<div class="card"><b>الحضور</b><div class="bar" style="margin-top:6px">${['p','l','e','a'].map(k=>`<div style="width:${ac[k]/an*100}%;background:var(--${ATT[k][1]})"></div>`).join('')}</div><div class="mut" style="font-size:12px">${['p','l','e','a'].map(k=>`${ATT[k][0]} ${Math.round(ac[k]/an*100)}%`).join(' · ')}</div></div>`:''}
@@ -835,7 +840,7 @@ function exportProfile(id){
 function backupV(){
   const fb=fbCfg(),cr=CRIT(),curSize=document.body.style.fontSize||'16px';
   const th=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
-  return `<h1>⚙️ الإعدادات</h1>
+  return `<div class="backbar"><button class="btn sec sm" onclick="go(S.lastMain||'home')">← رجوع</button><span class="mut" style="font-size:12px">${viewLabel(S.lastMain)} › الإعدادات</span></div>
   <div class="card"><b>🌙 الوضع الداكن</b><p class="mut">المظهر الحالي: ${th==='dark'?'داكن':'فاتح'}</p><button class="btn sec sm" onclick="toggleTheme()">${th==='dark'?'☀️ التحويل للوضع الفاتح':'🌙 التحويل للوضع الداكن'}</button></div>
   <div class="card"><b>🔤 حجم الخط</b><p class="mut">يكبّر النص الأساسي في عناصر الواجهة. الحجم الحالي: ${curSize}</p>
   <div class="row">${[14,16,18,20,22].map(n=>`<button class="btn ${curSize===n+'px'?'':'sec'} sm" onclick="setFontSize(${n})">${n}</button>`).join('')}</div></div>
@@ -888,7 +893,7 @@ function importBackupFile(inp){
   r.onload=(e)=>{
     let d;try{d=JSON.parse(e.target.result);if(!d.classes||!d.students||!d.subjects||!d.evals)throw 0}
     catch(x){return err('الملف غير صالح. تأكد أنه ملف نسخة احتياطية صحيح بصيغة JSON')}
-    ask('استبدال البيانات الحالية بالنسخة المستوردة؟',()=>{db=d;if(!db.holidays)db.holidays=[];save();toast('تم الاستيراد ✓');go('home')});
+    ask('استبدال البيانات الحالية بالنسخة المستوردة؟',()=>{db=d;if(!db.holidays)db.holidays=[];save();buzz();toast('تم الاستيراد ✓');go('home')});
   };
   r.onerror=()=>err('تعذّرت قراءة الملف');
   r.readAsText(f);
