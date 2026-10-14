@@ -250,7 +250,10 @@ function lessonRow(t,d,status,subId,idx,extra){
   const icon=status==='done'?'✅':status==='late'?'⚠️':'⬜';
   const hasDetail=extra.prep||extra.lessonLink||extra.lessonImg||extra.actLink||extra.actImg||extra.evalNote;
   const editBtn=(subId&&idx!==undefined)?`<button type="button" class="btn sec sm" style="padding:4px 9px" onclick="openLessonDetail('${subId}',${idx})" title="تحضير الدرس">${hasDetail?'📝':'✏️'}</button>`:'';
-  return `<div class="lnwrap" data-prep="${esc(extra.prep||'')}" data-llink="${esc(extra.lessonLink||'')}" data-limg="${esc(extra.lessonImg||'')}" data-alink="${esc(extra.actLink||'')}" data-aimg="${esc(extra.actImg||'')}" data-evalnote="${esc(extra.evalNote||'')}"><div class="row ln" style="align-items:center"><span style="width:20px;text-align:center" title="${status==='done'?'تم تدريسه':status==='late'?'تجاوز الموعد المقترح ولم يُدرَّس بعد':'قادم'}">${icon}</span><input class="lnt" value="${esc(t)}" placeholder="عنوان الدرس" style="flex:2;margin-bottom:0"><input class="lnd" type="date" value="${esc(d)}" style="flex:1;margin-bottom:0" onchange="checkLessonDate(this)"><button type="button" class="btn sec sm" style="padding:4px 9px" onclick="moveLesson(this,-1)" title="تحريك لأعلى">↑</button><button type="button" class="btn sec sm" style="padding:4px 9px" onclick="moveLesson(this,1)" title="تحريك لأسفل">↓</button>${editBtn}<button type="button" class="btn del sm" onclick="this.closest('.lnwrap').remove();refreshLessonIcons()">×</button></div><div class="dwarn mut" style="font-size:11px;color:var(--o);margin:0 0 6px"></div></div>`;
+  return `<div class="lnwrap" data-prep="${esc(extra.prep||'')}" data-llink="${esc(extra.lessonLink||'')}" data-limg="${esc(extra.lessonImg||'')}" data-alink="${esc(extra.actLink||'')}" data-aimg="${esc(extra.actImg||'')}" data-evalnote="${esc(extra.evalNote||'')}" style="border:1px solid var(--bd);border-radius:10px;padding:8px;margin-bottom:8px">
+  <div class="row" style="align-items:center;margin-bottom:4px"><span style="width:20px;text-align:center" title="${status==='done'?'تم تدريسه':status==='late'?'تجاوز الموعد المقترح ولم يُدرَّس بعد':'قادم'}">${icon}</span><input class="lnt" value="${esc(t)}" placeholder="عنوان الدرس" style="flex:1;margin-bottom:0;font-weight:700"></div>
+  <div class="row ln" style="align-items:center"><input class="lnd" type="date" value="${esc(d)}" style="flex:1;margin-bottom:0" onchange="checkLessonDate(this)"><button type="button" class="btn sec sm" style="padding:4px 9px" onclick="moveLesson(this,-1)" title="تحريك لأعلى">↑</button><button type="button" class="btn sec sm" style="padding:4px 9px" onclick="moveLesson(this,1)" title="تحريك لأسفل">↓</button>${editBtn}<button type="button" class="btn del sm" onclick="this.closest('.lnwrap').remove();refreshLessonIcons()">×</button></div>
+  <div class="dwarn mut" style="font-size:11px;color:var(--o);margin:4px 0 0"></div></div>`;
 }
 function addLesson(){document.getElementById('lns').insertAdjacentHTML('beforeend',lessonRow('','','upcoming'));refreshLessonIcons()}
 function moveLesson(btn,dir){
@@ -263,7 +266,7 @@ function refreshLessonIcons(){
   const lns=document.getElementById('lns');if(!lns)return;
   const taughtMax=+lns.dataset.taught||0,t=today();
   [...lns.children].forEach((wrap,i)=>{
-    const dateVal=wrap.querySelector('.lnd').value,span=wrap.querySelector('.ln > span');
+    const dateVal=wrap.querySelector('.lnd').value,span=wrap.querySelector('span');
     const status=i<taughtMax?'done':(dateVal&&dateVal<t?'late':'upcoming');
     span.textContent=status==='done'?'✅':status==='late'?'⚠️':'⬜';
     span.title=status==='done'?'تم تدريسه':status==='late'?'تجاوز الموعد المقترح ولم يُدرَّس بعد':'قادم';
