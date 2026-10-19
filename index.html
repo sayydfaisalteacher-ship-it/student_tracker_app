@@ -226,7 +226,7 @@ function unassignSeat(studId,classId){const s=db.students.find(x=>x.id===studId)
 function subjectsV(){
   const grid=[1,2,3,4,5,6,7].map(p=>`<tr><td>${p}</td>${DAYS.map((d,i)=>`<td>${db.subjects.filter(s=>s.slots.some(x=>x.d===i&&x.p===p)).map(s=>esc(s.name)).join('، ')}</td>`).join('')}</tr>`).join('');
   return `<h1>المواد</h1><button class="btn" onclick="subForm()">+ إضافة مادة</button><div style="height:10px"></div>`+
-  db.subjects.map(s=>`<div class="card row"><div class="sp"><b>${esc(s.name)}</b><div class="mut">${s.classIds.map(cn).join('، ')||'غير مرتبطة بصف'} · ${s.slots.length} حصص أسبوعياً</div></div><button class="btn sec sm" onclick="subForm('${s.id}')">تعديل</button><button class="btn del sm" onclick="delSub('${s.id}')">حذف</button></div>`).join('')+
+  db.subjects.map(s=>`<div class="card row"><div class="sp"><b>${esc(s.name)}</b><div class="mut">${s.classIds.map(cn).join('، ')||'غير مرتبطة بصف'} · ${s.slots.length} حصص أسبوعياً</div></div><button class="btn sec sm" onclick="examScoresForm('${s.id}')">📝 الدرجات</button><button class="btn sec sm" onclick="subForm('${s.id}')">تعديل</button><button class="btn del sm" onclick="delSub('${s.id}')">حذف</button></div>`).join('')+
   `<h2>الجدول الأسبوعي</h2><div class="card sc"><table><tr><th>الحصة</th>${DAYS.map(d=>`<th>${d}</th>`).join('')}</tr>${grid}</table></div>
   <h2>📅 العطل والإجازات الدراسية</h2><div class="card"><p class="mut">أيام تُستثنى تلقائياً من تنبيهات "لم يُقيَّم اليوم" و"الحصص الفائتة" في الرئيسية.</p>
   <div class="row"><input type="date" id="hd" style="flex:2"><button class="btn sm sp" onclick="addHoliday()">+ إضافة</button></div>
@@ -296,10 +296,11 @@ function recheckAllLessonDates(){
 }
 function subForm(id){
   const s=db.subjects.find(x=>x.id===id)||{name:'',classIds:[],slots:[],curriculum:[]};
-  const cur=normCur(s.curriculum),taughtMax=id?lessonTaughtMax(id):0,t=today();
+  const cur=normCur(s.curriculum),taughtMax=id?lessonTaughtMax(id):0,t=today(),em=s.examMax||{e1:20,e2:20};
   dlg(`<h2>${id?'تعديل مادة':'إضافة مادة'}</h2><label>اسم المادة</label><input id="f1" value="${esc(s.name)}"><label>الصفوف</label>
   ${db.classes.map(c=>`<div><label><input type="checkbox" class="cc" style="width:auto" value="${c.id}" ${s.classIds.includes(c.id)?'checked':''}> ${esc(c.name)}</label></div>`).join('')}
   <label>الحصص الأسبوعية</label><div id="sls">${s.slots.map(x=>slotRow(x.d,x.p)).join('')}</div><button class="btn sec sm" onclick="addSlot()">+ حصة</button>
+  <label>الدرجة العظمى للاختبارات</label><div class="row"><div class="sp"><label class="mut">الاختبار الأول</label><input type="number" id="em1" value="${em.e1}" min="1"></div><div class="sp"><label class="mut">الاختبار الثاني</label><input type="number" id="em2" value="${em.e2}" min="1"></div></div>
   <label>خطة المنهج (اختياري) — عنوان الدرس وتاريخه المقترح، بالترتيب</label>
   <div class="mut" style="font-size:12px;margin-bottom:4px">✅ دُرِّس بالفعل (في صف واحد على الأقل) · ⚠️ تجاوز موعده المقترح ولم يُدرَّس · ⬜ قادم</div>
   <div class="mut" id="dayhint" style="font-size:12px;margin-bottom:6px"></div>
@@ -312,11 +313,31 @@ function subForm(id){
 function saveSub(id){
   const n=f1.value.trim();if(!n)return err('اسم المادة مطلوب');
   const curriculum=[...document.querySelectorAll('.lnwrap')].map(w=>({t:w.querySelector('.lnt').value.trim(),d:w.querySelector('.lnd').value,prep:w.dataset.prep||'',lessonLink:w.dataset.llink||'',lessonImg:w.dataset.limg||'',actLink:w.dataset.alink||'',actImg:w.dataset.aimg||'',evalNote:w.dataset.evalnote||''})).filter(x=>x.t);
-  const o={name:n,classIds:[...document.querySelectorAll('.cc:checked')].map(x=>x.value),slots:[...document.querySelectorAll('.sl')].map(r=>{const q=r.querySelectorAll('select');return{d:+q[0].value,p:+q[1].value}}),curriculum};
+  const o={name:n,classIds:[...document.querySelectorAll('.cc:checked')].map(x=>x.value),slots:[...document.querySelectorAll('.sl')].map(r=>{const q=r.querySelectorAll('select');return{d:+q[0].value,p:+q[1].value}}),curriculum,examMax:{e1:Math.max(1,+em1.value||20),e2:Math.max(1,+em2.value||20)}};
   if(id)Object.assign(db.subjects.find(x=>x.id===id),o);else db.subjects.push({id:uid(),...o});
   save();buzz();closeD();render();
 }
-function delSub(id){ask('حذف المادة وكل تقييماتها؟',()=>{db.subjects=db.subjects.filter(s=>s.id!==id);Object.keys(db.evals).forEach(k=>{if(db.evals[k].s===id)delete db.evals[k]});save();render()})}
+function delSub(id){ask('حذف المادة وكل تقييماتها؟',()=>{db.subjects=db.subjects.filter(s=>s.id!==id);Object.keys(db.evals).forEach(k=>{if(db.evals[k].s===id)delete db.evals[k]});if(db.examScores)Object.keys(db.examScores).forEach(k=>{if(k.endsWith('|'+id))delete db.examScores[k]});save();render()})}
+function examKey(studId,subId){return studId+'|'+subId}
+function getExam(studId,subId){return (db.examScores&&db.examScores[examKey(studId,subId)])||{e1:'',e2:''}}
+function examScoresForm(subId,classId){
+  const sub=db.subjects.find(x=>x.id===subId);if(!sub)return;
+  if(!classId)classId=sub.classIds[0];
+  const em=sub.examMax||{e1:20,e2:20},sts=db.students.filter(s=>s.classId===classId);
+  dlg(`<h2>📝 درجات: ${esc(sub.name)}</h2>
+  ${sub.classIds.length>1?`<label>الصف</label><select onchange="examScoresForm('${subId}',this.value)">${sub.classIds.map(cid=>`<option value="${cid}" ${cid===classId?'selected':''}>${esc(cn(cid))}</option>`).join('')}</select>`:`<p class="mut">${esc(cn(classId))}</p>`}
+  <div class="mut" style="font-size:12px;margin:6px 0">الدرجة العظمى: اختبار 1 = ${em.e1} · اختبار 2 = ${em.e2}</div>
+  <div id="exrows">${sts.map(s=>{const sc=getExam(s.id,subId);return `<div class="row" style="align-items:center" data-sid="${s.id}"><span class="sp">${esc(s.name)}</span><input type="number" class="ex1" placeholder="١" value="${sc.e1}" min="0" max="${em.e1}" style="flex:1;margin-bottom:0"><input type="number" class="ex2" placeholder="٢" value="${sc.e2}" min="0" max="${em.e2}" style="flex:1;margin-bottom:0"></div>`}).join('')||'<p class="mut">لا يوجد طلاب في هذا الصف.</p>'}</div>
+  <div class="er" id="er"></div><div class="row"><button class="btn sp" onclick="saveExamScores('${subId}')">حفظ</button><button class="btn sec sp" onclick="closeD()">إلغاء</button></div>`);
+}
+function saveExamScores(subId){
+  if(!db.examScores)db.examScores={};
+  [...document.querySelectorAll('#exrows [data-sid]')].forEach(row=>{
+    const sid=row.dataset.sid,v1=row.querySelector('.ex1').value,v2=row.querySelector('.ex2').value;
+    db.examScores[examKey(sid,subId)]={e1:v1===''?'':+v1,e2:v2===''?'':+v2};
+  });
+  save();buzz();toast('تم حفظ الدرجات ✓');closeD();render();
+}
 let _ldImg='',_ldAImg='';
 function openLessonDetail(subId,idx){
   const sub=db.subjects.find(x=>x.id===subId);if(!sub)return;
@@ -823,6 +844,15 @@ function profileV(){
   ${CRIT().map(cr=>critAvg(h,cr[0])).some(v=>v!==null)?`<div class="mut" style="font-size:13px;margin-top:6px">${CRIT().map(cr=>{const v=critAvg(h,cr[0]);return v!==null?`${cr[1]} ${v.toFixed(1)}/4`:''}).filter(Boolean).join(' · ')}</div>`:''}</div>
   ${ah.length?`<div class="card"><b>الحضور</b><div class="bar" style="margin-top:6px">${['p','l','e','a'].map(k=>`<div style="width:${ac[k]/an*100}%;background:var(--${ATT[k][1]})"></div>`).join('')}</div><div class="mut" style="font-size:12px">${['p','l','e','a'].map(k=>`${ATT[k][0]} ${Math.round(ac[k]/an*100)}%`).join(' · ')}</div></div>`:''}
   ${h.length?`<div class="card"><b>🙋 المشاركة</b><div class="mut" style="margin-top:4px">متوسط المشاركات لكل حصة: <b style="color:var(--tx)">${(h.reduce((a,x)=>a+(x.pc||0),0)/h.length).toFixed(1)}</b> · أعلى مشاركة مسجَّلة: ${Math.max(...h.map(x=>x.pc||0))}</div></div>`:''}
+  ${(()=>{const subs=db.subjects.filter(sb=>sb.classIds.includes(s.classId));if(!subs.length)return'';
+    const rows=subs.map(sb=>{const sc=getExam(s.id,sb.id),em=sb.examMax||{e1:20,e2:20};
+      if(sc.e1===''&&sc.e2==='')return'';
+      const tot=(sc.e1===''?0:sc.e1)+(sc.e2===''?0:sc.e2),max=em.e1+em.e2;
+      return `<tr><td>${esc(sb.name)}</td><td>${sc.e1===''?'—':sc.e1+'/'+em.e1}</td><td>${sc.e2===''?'—':sc.e2+'/'+em.e2}</td><td><b>${tot}/${max}</b> (${Math.round(tot/max*100)}%)</td></tr>`;
+    }).filter(Boolean);
+    if(!rows.length)return'';
+    return `<div class="card sc"><b>📝 درجات الاختبارات</b><table style="margin-top:6px"><tr><th>المادة</th><th>اختبار 1</th><th>اختبار 2</th><th>المجموع</th></tr>${rows.join('')}</table></div>`;
+  })()}
   <div class="card"><b>تطور الأداء (متوسط اليوم)</b>${pts.length?svg:'<p class="mut">لا توجد بيانات.</p>'}</div>
   <div class="card sc"><b>السجل</b><table><tr><th>التاريخ</th><th>المادة</th>${CRIT().map(cr=>`<th>${cr[1]}</th>`).join('')}<th>🙋</th><th>الحضور</th><th>ملاحظة</th></tr>${h.slice().reverse().map(x=>`<tr><td>${x.d} (ح${x.p})</td><td>${esc(sn(x.s))}</td>${CRIT().map(cr=>{const v=x.c&&x.c[cr[0]];return `<td>${v?`<span class="chip ${RT[v][1]}">${RT[v][0]}</span>`:'—'}</td>`}).join('')}<td>${x.pc||0}</td><td>${ATT[x.att||'p'][0]}</td><td>${esc(x.n||'')}</td></tr>`).join('')}</table></div>
   <div class="row"><button class="btn sec noprint sp" onclick="print()">طباعة / حفظ PDF</button><button class="btn sec noprint sp" onclick="exportProfile('${s.id}')">تصدير إكسل</button></div>`;
@@ -833,6 +863,11 @@ function exportProfile(id){
   const data=[['التاريخ','الحصة','المادة',...CRIT().map(cr=>cr[1]),'عدد المشاركات','الحضور','ملاحظة']];
   h.forEach(x=>data.push([x.d,x.p,sn(x.s),...CRIT().map(cr=>{const v=x.c&&x.c[cr[0]];return v?RT[v][0]:''}),x.pc||0,ATT[x.att||'p'][0],x.n||'']));
   const ws=XLSX.utils.aoa_to_sheet(data),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'السجل');
+  const exSubs=db.subjects.filter(sb=>sb.classIds.includes(s.classId));
+  const exData=[['المادة','اختبار 1','من','اختبار 2','من','المجموع']];
+  exSubs.forEach(sb=>{const sc=getExam(id,sb.id),em=sb.examMax||{e1:20,e2:20};if(sc.e1===''&&sc.e2==='')return;
+    exData.push([sb.name,sc.e1,em.e1,sc.e2,em.e2,(sc.e1===''?0:sc.e1)+(sc.e2===''?0:sc.e2)]);});
+  if(exData.length>1){const ws2=XLSX.utils.aoa_to_sheet(exData);XLSX.utils.book_append_sheet(wb,ws2,'الاختبارات')}
   saveBlob(new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`تقرير_${s.name}.xlsx`);
 }
 
