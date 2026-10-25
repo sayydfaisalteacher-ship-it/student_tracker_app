@@ -131,7 +131,7 @@ function viewLabel(v){return({home:'الرئيسية',eval:'تقييم',students
 function buzz(){try{if(navigator.vibrate)navigator.vibrate(15)}catch(e){}}
 function render(){
   document.getElementById('nav').innerHTML=NAV.map(n=>`<button class="${V===n[0]?'on':''}" onclick="go('${n[0]}')"><b>${n[1]}</b>${n[2]}</button>`).join('');
-  document.getElementById('app').innerHTML=({home,eval:evalV,students:studentsV,classes:classesV,subjects:subjectsV,reports:reportsV,profile:profileV,backup:backupV})[V]();
+  document.getElementById('app').innerHTML=({home,eval:evalV,students:studentsV,classes:classesV,subjects:subjectsV,reports:reportsV,profile:profileV,backup:backupV,cert:certificateV})[V]();
   document.getElementById('fab').style.display=(V==='eval')?'flex':'none';
 }
 const cn=id=>(db.classes.find(c=>c.id===id)||{}).name||'—';
@@ -152,14 +152,40 @@ function todaySchedule(){
   return out.sort((a,b)=>a.p-b.p);
 }
 const FULLDAYS=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+function weeklySummary(){
+  const from=new Date();from.setDate(from.getDate()-7);const fromStr=from.toISOString().slice(0,10);
+  const prevFrom=new Date();prevFrom.setDate(prevFrom.getDate()-14);const prevFromStr=prevFrom.toISOString().slice(0,10);
+  const sessionCount=Object.values(db.evals).filter(e=>e.d>=fromStr).length;
+  const results=db.students.map(s=>{
+    const h=hist(s.id,{});
+    const thisWk=h.filter(x=>x.d>=fromStr),prevWk=h.filter(x=>x.d>=prevFromStr&&x.d<fromStr);
+    if(!thisWk.length)return null;
+    return {s,thisA:avg(thisWk),prevA:prevWk.length?avg(prevWk):null,thisLen:thisWk.length,lowCount:thisWk.filter(x=>Math.round(x.score)<=2).length};
+  }).filter(Boolean);
+  const improved=results.filter(x=>x.prevA!==null).map(x=>({s:x.s,delta:x.thisA-x.prevA})).sort((a,b)=>b.delta-a.delta)[0]||null;
+  const needsAttn=results.slice().sort((a,b)=>b.lowCount-a.lowCount||a.thisA-b.thisA)[0]||null;
+  return{sessionCount,improved,needsAttn:(needsAttn&&needsAttn.lowCount>0)?needsAttn:null};
+}
+function backupReminder(){
+  let last=null;try{last=localStorage.getItem('sp1-lastbackup')}catch(e){}
+  const days=last?Math.round((new Date()-new Date(last))/864e5):999;
+  return days>=7?days:0;
+}
 function home(){
   const alerts=alertList(),notDone=classesNotEvaluatedToday(),gaps=topicGaps(),hol=isHoliday(today()),missed=missedToday(),sched=todaySchedule();
   const dateLabel=FULLDAYS[new Date().getDay()]+'، '+new Date().toLocaleDateString('ar',{day:'numeric',month:'long'});
+  const bkDays=backupReminder(),wk=weeklySummary();
   return `<div style="background:linear-gradient(135deg,var(--pri),#2e9e8f);border-radius:18px;padding:16px 18px;margin-bottom:12px;color:#fff;display:flex;align-items:center;justify-content:space-between">
   <div><div style="font-size:13px;opacity:.85">${dateLabel}</div><div style="font-size:20px;font-weight:800;margin-top:2px">متابعة أداء الطلاب</div></div>
   <button onclick="go('backup')" style="background:rgba(255,255,255,.2);border:0;color:#fff;width:42px;height:42px;border-radius:50%;font-size:19px;cursor:pointer" title="الإعدادات">⚙️</button>
   </div>
+  ${bkDays?`<div class="card row" style="border-color:var(--o);background:rgba(224,138,30,.08)"><div class="sp">📦 <b>لم تأخذ نسخة احتياطية منذ ${bkDays} يوماً</b><div class="mut" style="font-size:12px">يُفضَّل تصديرها دورياً لتفادي فقدان البيانات عند مسح بيانات المتصفح.</div></div><button class="btn sec sm" onclick="exportBackup()">نسخ الآن</button></div>`:''}
   ${hol?'<div class="card" style="border-color:var(--pri);text-align:center">📅 اليوم مُسجَّل كعطلة دراسية</div>':sched.length?`<div class="sc" style="margin-bottom:10px"><div style="display:flex;gap:8px;padding-bottom:2px">${sched.map(x=>`<div onclick="goToSession('${x.c}','${x.s}',${x.p})" style="cursor:pointer;flex:none;min-width:118px;background:var(--card);border:1px solid ${x.done?'var(--g)':'var(--bd)'};border-radius:12px;padding:8px;text-align:center"><div class="mut" style="font-size:11px">حصة ${x.p} ${x.done?'✅':''}</div><div style="font-weight:700;font-size:13px;margin-top:2px">${esc(sn(x.s))}</div><div class="mut" style="font-size:11px">${esc(cn(x.c))}</div></div>`).join('')}</div></div>`:''}
+  ${wk.sessionCount?`<div class="card"><b>📊 ملخص الأسبوع</b>
+  <div class="mut" style="margin-top:6px">عدد الحصص المسجَّلة: <b style="color:var(--tx)">${wk.sessionCount}</b></div>
+  ${wk.improved&&wk.improved.delta>0.3?`<div class="mut" style="margin-top:4px" onclick="S.pid='${wk.improved.s.id}';go('profile')">⬆️ الأكثر تحسّناً: <b style="color:var(--tx)">${esc(wk.improved.s.name)}</b></div>`:''}
+  ${wk.needsAttn?`<div class="mut" style="margin-top:4px" onclick="S.pid='${wk.needsAttn.s.id}';go('profile')">⚠️ يحتاج متابعة أكثر: <b style="color:var(--tx)">${esc(wk.needsAttn.s.name)}</b></div>`:''}
+  </div>`:''}
   <div class="row" style="margin-bottom:10px">
   <div class="card sp" style="text-align:center;background:${alerts.length?'rgba(214,69,69,.1)':'var(--card)'};border-color:${alerts.length?'var(--r)':'var(--bd)'}" onclick="go('reports')"><div style="font-size:20px">🔴</div><div style="font-size:24px;font-weight:800;margin-top:2px">${alerts.length}</div><div class="mut" style="font-size:12px">تنبيه متابعة</div></div>
   <div class="card sp" style="text-align:center;background:${notDone.length?'rgba(47,111,208,.1)':'var(--card)'};border-color:${notDone.length?'var(--b)':'var(--bd)'}" onclick="go('eval')"><div style="font-size:20px">📘</div><div style="font-size:24px;font-weight:800;margin-top:2px">${notDone.length}</div><div class="mut" style="font-size:12px">صف لم يُقيَّم اليوم</div></div>
@@ -682,6 +708,18 @@ function saveEval(){
   sts.forEach(s=>{const r=S.rows[s.id]||{};const row={att:r.att||'p'};if(r.c&&Object.keys(r.c).length)row.c=r.c;if(r.n)row.n=r.n;if(r.pc)row.pc=r.pc;if(row.c||row.att!=='p'||row.pc)any=true;rows[s.id]=row});
   if(!any)return toast('قيّم معياراً واحداً أو سجّل حضور طالب على الأقل');
   db.evals[S.k]={c:e.c,s:e.s,d:e.d,p:e.p,topic:(S.topic||'').trim(),rows};save();buzz();toast('تم حفظ الحصة ✓');render();
+  checkConsecutiveWeak(Object.keys(rows).filter(id=>rowScore(rows[id])!==null));
+}
+function checkConsecutiveWeak(ids){
+  const flagged=ids.map(id=>db.students.find(s=>s.id===id)).filter(Boolean).filter(s=>{
+    const h=hist(s.id,{});if(h.length<3)return false;
+    return h.slice(-3).every(x=>Math.round(x.score)===1);
+  });
+  if(!flagged.length)return;
+  dlg(`<h2>⚠️ تنبيه متابعة عاجل</h2><p>الطلاب التالية أسماؤهم حصلوا على تقييم "ضعيف" في آخر 3 حصص متتالية:</p>
+  ${flagged.map(s=>`<div class="card row" onclick="closeD();S.pid='${s.id}';go('profile')" style="cursor:pointer;border-color:var(--r)">${av(s)}<b>${esc(s.name)}</b></div>`).join('')}
+  <p class="mut">يُنصح بالتواصل مع ولي الأمر أو تقديم دعم إضافي له.</p>
+  <button class="btn sp" style="width:100%;margin-top:6px" onclick="closeD()">تم، فهمت</button>`);
 }
 
 /* ===== التقارير ===== */
@@ -855,7 +893,26 @@ function profileV(){
   })()}
   <div class="card"><b>تطور الأداء (متوسط اليوم)</b>${pts.length?svg:'<p class="mut">لا توجد بيانات.</p>'}</div>
   <div class="card sc"><b>السجل</b><table><tr><th>التاريخ</th><th>المادة</th>${CRIT().map(cr=>`<th>${cr[1]}</th>`).join('')}<th>🙋</th><th>الحضور</th><th>ملاحظة</th></tr>${h.slice().reverse().map(x=>`<tr><td>${x.d} (ح${x.p})</td><td>${esc(sn(x.s))}</td>${CRIT().map(cr=>{const v=x.c&&x.c[cr[0]];return `<td>${v?`<span class="chip ${RT[v][1]}">${RT[v][0]}</span>`:'—'}</td>`}).join('')}<td>${x.pc||0}</td><td>${ATT[x.att||'p'][0]}</td><td>${esc(x.n||'')}</td></tr>`).join('')}</table></div>
-  <div class="row"><button class="btn sec noprint sp" onclick="print()">طباعة / حفظ PDF</button><button class="btn sec noprint sp" onclick="exportProfile('${s.id}')">تصدير إكسل</button></div>`;
+  <div class="row"><button class="btn sec noprint sp" onclick="print()">طباعة / حفظ PDF</button><button class="btn sec noprint sp" onclick="exportProfile('${s.id}')">تصدير إكسل</button></div>
+  <button class="btn noprint" style="width:100%;margin-top:8px;background:linear-gradient(90deg,#c9a227,#e0bb4a)" onclick="go('cert')">🏆 طباعة شهادة تقدير</button>`;
+}
+function certificateV(){
+  const s=db.students.find(x=>x.id===S.pid);if(!s){V='students';return studentsV()}
+  const h=hist(s.id,{}),a=avg(h);
+  const tier=!h.length?'نقدّر جهوده ونشجّعه على الاستمرار':a>=3.5?'تقديراً لأدائه المتميز والمتفوق':a>=2.8?'تقديراً لأدائه الجيد الذي يستحق الإشادة':a>=2?'تقديراً لتطوره المستمر وثباته':'تقديراً لجهوده ونشجّعه على الاستمرار والتطور';
+  const dateStr=FULLDAYS[new Date().getDay()]+'، '+new Date().toLocaleDateString('ar',{day:'numeric',month:'long',year:'numeric'});
+  return `<div class="backbar noprint"><button class="btn sec sm" onclick="go('profile')">← رجوع</button><span class="mut" style="font-size:12px">ملف الطالب › شهادة تقدير</span></div>
+  <div class="card" style="border:3px solid #c9a227;border-radius:20px;padding:30px 20px;text-align:center;background:linear-gradient(160deg,var(--card),rgba(201,162,39,.08))">
+  <div style="font-size:13px;letter-spacing:3px;color:#c9a227;font-weight:800">✦ شهادة تقدير ✦</div>
+  <div style="font-size:42px;margin:14px 0">🏆</div>
+  <div class="mut" style="font-size:13px">تُمنح هذه الشهادة إلى الطالب/ة</div>
+  <div style="font-size:28px;font-weight:800;margin:10px 0;color:var(--pri)">${esc(s.name)}</div>
+  <div class="mut" style="font-size:13px">${esc(cn(s.classId))}</div>
+  <div style="margin:22px 0;font-size:15px;line-height:1.9">${tier}${h.length?`<br>بمتوسط تقييم <b>${a.toFixed(1)}</b> من 4 خلال ${h.length} تقييماً`:''}</div>
+  <div style="display:flex;justify-content:space-between;margin-top:36px;font-size:12px" class="mut">
+  <div>التاريخ: ${dateStr}</div><div>توقيع المعلم: ________________</div>
+  </div></div>
+  <button class="btn noprint" style="width:100%;margin-top:10px" onclick="print()">🖨️ طباعة الشهادة</button>`;
 }
 function exportProfile(id){
   if(typeof XLSX==='undefined')return toast('تعذر تحميل مكتبة الإكسل');
@@ -921,6 +978,8 @@ async function fbDownload(){
 function exportBackup(){
   const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
   saveBlob(blob,`نسخة_احتياطية_${today()}.json`);
+  try{localStorage.setItem('sp1-lastbackup',new Date().toISOString())}catch(e){}
+  render();
 }
 function importBackupFile(inp){
   const f=inp.files[0];if(!f)return;
