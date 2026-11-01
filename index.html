@@ -41,9 +41,16 @@ label{font-size:14px;color:var(--mut)}
 .chip{display:inline-block;border-radius:20px;padding:2px 10px;font-size:13px;font-weight:700}
 .backbar{position:sticky;top:0;background:var(--bg);z-index:3;padding:6px 0;margin-bottom:6px;display:flex;align-items:center;gap:8px}
 .backbar button{flex:none}
+input.srch{background:rgba(47,111,208,.09);border:1.5px solid var(--b)}
+input.srch::placeholder{color:var(--b);opacity:.75}
 .qnwrap{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 6px}
 .qnwrap button{font-size:11.5px;padding:4px 9px;border-radius:14px;border:1px solid var(--bd);background:var(--bg);color:var(--mut);cursor:pointer}
-.qnwrap button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.qnwrap button.qg{border-color:var(--g);color:var(--g)}
+.qnwrap button.qo{border-color:var(--o);color:var(--o)}
+.qnwrap button.qr{border-color:var(--r);color:var(--r)}
+.qnwrap button.on.qg{background:var(--g);color:#fff}
+.qnwrap button.on.qo{background:var(--o);color:#fff}
+.qnwrap button.on.qr{background:var(--r);color:#fff}
 nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--bd);display:flex;padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px))}
 .fab{display:none;position:fixed;left:16px;bottom:calc(78px + env(safe-area-inset-bottom,0px));width:58px;height:58px;border-radius:50%;background:var(--pri);color:#fff;border:0;box-shadow:0 4px 14px rgba(0,0,0,.3);font-size:24px;z-index:6;align-items:center;justify-content:center;cursor:pointer}
 .fab:active{transform:scale(.93)}
@@ -70,7 +77,7 @@ const RT={4:['ممتاز','g'],3:['جيد','b'],2:['يحتاج متابعة','o'
 const ATT={p:['حاضر','g'],l:['متأخر','o'],e:['مستأذن','b'],a:['غائب','r']};
 const CRIT_DEF=[['par','المشاركة'],['beh','السلوك'],['hw','الواجبات']];
 function CRIT(){return CRIT_DEF.map(([k,def])=>[k,(db.critLabels&&db.critLabels[k])||def])}
-const QN=['نائم أثناء الحصة','استخدام الهاتف','لم يُحضر الواجب','مشارك بفعالية','يحتاج مراجعة أكثر','تحدّث دون إذن','متعاون مع زملائه','متأخر عن الحصة','مشتّت الانتباه','أداء متميز'];
+const QN=[['نائم أثناء الحصة','r'],['استخدام الهاتف','r'],['لم يُحضر الواجب','r'],['مشارك بفعالية','g'],['يحتاج مراجعة أكثر','o'],['تحدّث دون إذن','o'],['متعاون مع زملائه','g'],['متأخر عن الحصة','o'],['مشتّت الانتباه','o'],['أداء متميز','g']];
 function rowScore(row){
   if(row&&row.c){const v=CRIT().map(x=>row.c[x[0]]).filter(Boolean);if(v.length)return v.reduce((a,b)=>a+b,0)/v.length}
   if(row&&row.r)return row.r; // بيانات قديمة بتقدير واحد قبل التحديث
@@ -400,7 +407,7 @@ function studentsV(){
   const q=(S.q||'').trim(),cf=S.sc||'';
   const l=db.students.filter(s=>(!cf||s.classId===cf)&&(!q||s.name.includes(q)||s.num.includes(q)));
   return `<h1>الطلاب</h1><div class="row"><button class="btn" onclick="stuForm()">+ إضافة طالب</button><button class="btn sec" onclick="importDlg()">📥 استيراد من إكسل</button></div>
-  <input placeholder="بحث بالاسم أو الرقم الأكاديمي" value="${esc(q)}" oninput="S.q=this.value;render2()" id="sq">
+  <input class="srch" placeholder="🔍 بحث بالاسم أو الرقم الأكاديمي" value="${esc(q)}" oninput="S.q=this.value;render2()" id="sq">
   <select onchange="S.sc=this.value;render()"><option value="">كل الصفوف</option>${db.classes.map(c=>`<option value="${c.id}" ${cf===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
   <div id="sl">${stuList(l)}</div>`;
 }
@@ -585,7 +592,7 @@ function evalV(){
   <div class="row"><button class="btn sec sm" onclick="allGood()">تعيين الكل ممتاز</button><button class="btn sec sm" onclick="allPresent()">تعيين الكل حاضر</button><span class="mut">${done} من ${sts.length} مقيَّمون</span></div>
   <button class="btn sm" style="width:100%;margin-bottom:8px;background:linear-gradient(90deg,#8b5cf6,#ec4899);border:0" onclick="pickRandomStudent()">🎲 اختيار طالب عشوائي للمشاركة</button>
   <div class="row"><button class="btn ${S.seatView?'sec':''} sm sp" onclick="S.seatView=false;render()">📋 قائمة</button><button class="btn ${S.seatView?'':'sec'} sm sp" onclick="S.seatView=true;render()">🪑 مخطط المقاعد</button></div>
-  ${S.seatView?'':`<input id="eq" placeholder="بحث عن طالب بالاسم أو الرقم الأكاديمي" value="${esc(S.eq||'')}" oninput="S.eq=this.value;renderEvalList()">`}
+  ${S.seatView?'':`<input id="eq" class="srch" placeholder="🔍 بحث عن طالب بالاسم أو الرقم الأكاديمي" value="${esc(S.eq||'')}" oninput="S.eq=this.value;renderEvalList()">`}
   <div id="evl">${S.seatView?seatGridHtml(sts):evalListHtml(sts)}</div>
   <div style="height:70px"></div>`;
 }
@@ -596,7 +603,7 @@ function evalListHtml(sts){
   <div class="rb" style="grid-template-columns:repeat(4,1fr)">${['p','l','e','a'].map(ak=>`<button class="${ATT[ak][1]} ${at===ak?'on':''}" onclick="setAtt('${s.id}','${ak}')">${ATT[ak][0]}</button>`).join('')}</div>
   ${partUI(s.id,'list')}
   <div style="${at==='a'?'opacity:.45':''}">${CRIT().map(cr=>`<div class="mut" style="font-size:12px;margin-top:6px">${cr[1]}</div><div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c[cr[0]]===v?'on':''}" onclick="rateC('${s.id}','${cr[0]}',${v})">${RT[v][0]}</button>`).join('')}</div>`).join('')}</div>
-  <div class="qnwrap">${QN.map(t=>{const active=(r.n||'').split('، ').includes(t);return `<button type="button" class="${active?'on':''}" onclick="addQN('${s.id}',this)" data-t="${esc(t)}">${esc(t)}</button>`}).join('')}</div>
+  <div class="qnwrap">${QN.map(([t,c])=>{const active=(r.n||'').split('، ').includes(t);return `<button type="button" class="q${c}${active?' on':''}" onclick="addQN('${s.id}',this)" data-t="${esc(t)}">${esc(t)}</button>`}).join('')}</div>
   <input placeholder="ملاحظة (اختياري)" value="${esc(r.n||'')}" oninput="note('${s.id}',this.value)" style="margin-bottom:0"></div>`}).join('')||'<p class="mut">لا يوجد طلاب مطابقون.</p>';
 }
 function renderEvalList(){
