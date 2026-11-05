@@ -99,6 +99,7 @@ function seed(){
 let db=null;try{db=JSON.parse(localStorage.getItem('sp1')||'null')}catch(e){}
 if(!db)db=seed();
 if(!db.holidays)db.holidays=[];
+if(!db.groups)db.groups={};
 try{const th=localStorage.getItem('sp1-theme');if(th)document.documentElement.dataset.theme=th}catch(e){}
 try{const fs=localStorage.getItem('sp1-fontsize');if(fs)document.body.style.fontSize=fs+'px'}catch(e){}
 function setFontSize(n){
@@ -494,7 +495,7 @@ function saveStu(id){
   if(id)Object.assign(db.students.find(x=>x.id===id),o);else db.students.push({id:uid(),...o});
   save();buzz();closeD();render();
 }
-function delStu(id){ask('حذف الطالب وكل تقييماته؟',()=>{db.students=db.students.filter(s=>s.id!==id);Object.values(db.evals).forEach(e=>delete e.rows[id]);save();render()})}
+function delStu(id){ask('حذف الطالب وكل تقييماته؟',()=>{db.students=db.students.filter(s=>s.id!==id);Object.values(db.evals).forEach(e=>delete e.rows[id]);Object.values(db.groups||{}).forEach(arr=>arr.forEach(g=>g.ids=g.ids.filter(x=>x!==id)));save();render()})}
 
 
 /* ===== استيراد من إكسل ===== */
@@ -579,7 +580,7 @@ function evalV(){
   const subs=db.subjects.filter(x=>x.classIds.includes(e.c));
   if(!subs.find(x=>x.id===e.s))e.s=(subs[0]||{}).id||'';
   const sts=db.students.filter(x=>x.classId===e.c),k=[e.c,e.s,e.d,e.p].join('|');
-  if(S.k!==k){S.k=k;S.rows=JSON.parse(JSON.stringify((db.evals[k]||{}).rows||{}));S.topic=(db.evals[k]||{}).topic||''}
+  if(S.k!==k){S.k=k;S.rows=JSON.parse(JSON.stringify((db.evals[k]||{}).rows||{}));S.topic=(db.evals[k]||{}).topic||'';S.grp=JSON.parse(JSON.stringify((db.evals[k]||{}).groups||{}))}
   const done=Object.values(S.rows).filter(r=>rowScore(r)!==null).length;
   const sched=e.s?isScheduled(e.s,e.d,e.p):true;
   return `<h1>تقييم حصة</h1><div class="card"><label>الصف</label><select onchange="setE('c',this.value)">${db.classes.map(c=>`<option value="${c.id}" ${c.id===e.c?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
@@ -591,9 +592,9 @@ function evalV(){
   ${db.evals[k]?'<p class="mut">هذه الحصة محفوظة سابقاً، يمكنك تعديلها.</p>':''}
   <div class="row"><button class="btn sec sm" onclick="allGood()">تعيين الكل ممتاز</button><button class="btn sec sm" onclick="allPresent()">تعيين الكل حاضر</button><span class="mut">${done} من ${sts.length} مقيَّمون</span></div>
   <button class="btn sm" style="width:100%;margin-bottom:8px;background:linear-gradient(90deg,#8b5cf6,#ec4899);border:0" onclick="pickRandomStudent()">🎲 اختيار طالب عشوائي للمشاركة</button>
-  <div class="row"><button class="btn ${S.seatView?'sec':''} sm sp" onclick="S.seatView=false;render()">📋 قائمة</button><button class="btn ${S.seatView?'':'sec'} sm sp" onclick="S.seatView=true;render()">🪑 مخطط المقاعد</button></div>
-  ${S.seatView?'':`<input id="eq" class="srch" placeholder="🔍 بحث عن طالب بالاسم أو الرقم الأكاديمي" value="${esc(S.eq||'')}" oninput="S.eq=this.value;renderEvalList()">`}
-  <div id="evl">${S.seatView?seatGridHtml(sts):evalListHtml(sts)}</div>
+  <div class="row"><button class="btn ${(S.vm||'list')==='list'?'':'sec'} sm sp" onclick="S.vm='list';render()">📋 قائمة</button><button class="btn ${S.vm==='seat'?'':'sec'} sm sp" onclick="S.vm='seat';render()">🪑 المقاعد</button><button class="btn ${S.vm==='group'?'':'sec'} sm sp" onclick="S.vm='group';render()">👥 مجموعات</button></div>
+  ${(S.vm&&S.vm!=='list')?'':`<input id="eq" class="srch" placeholder="🔍 بحث عن طالب بالاسم أو الرقم الأكاديمي" value="${esc(S.eq||'')}" oninput="S.eq=this.value;renderEvalList()">`}
+  <div id="evl">${S.vm==='group'?groupsHtml(sts):S.vm==='seat'?seatGridHtml(sts):evalListHtml(sts)}</div>
   <div style="height:70px"></div>`;
 }
 function evalListHtml(sts){
@@ -605,6 +606,55 @@ function evalListHtml(sts){
   <div style="${at==='a'?'opacity:.45':''}">${CRIT().map(cr=>`<div class="mut" style="font-size:12px;margin-top:6px">${cr[1]}</div><div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${c[cr[0]]===v?'on':''}" onclick="rateC('${s.id}','${cr[0]}',${v})">${RT[v][0]}</button>`).join('')}</div>`).join('')}</div>
   <div class="qnwrap">${QN.map(([t,c])=>{const active=(r.n||'').split('، ').includes(t);return `<button type="button" class="q${c}${active?' on':''}" onclick="addQN('${s.id}',this)" data-t="${esc(t)}">${esc(t)}</button>`}).join('')}</div>
   <input placeholder="ملاحظة (اختياري)" value="${esc(r.n||'')}" oninput="note('${s.id}',this.value)" style="margin-bottom:0"></div>`}).join('')||'<p class="mut">لا يوجد طلاب مطابقون.</p>';
+}
+function groupsOf(){return (db.groups&&db.groups[S.e.c])||[]}
+function groupsHtml(sts){
+  S.grp=S.grp||{};const gl=groupsOf();
+  let h=`<div class="row"><button class="btn sm sp" onclick="groupForm()">+ مجموعة جديدة</button><button class="btn sec sm sp" onclick="randomGroupsDlg()">🎲 توزيع عشوائي</button></div><div style="height:8px"></div>`;
+  h+=gl.map(g=>{const gr=S.grp[g.id]||{},members=g.ids.map(id=>sts.find(s=>s.id===id)).filter(Boolean);
+    return `<div class="card"><div class="row"><b class="sp">👥 ${esc(g.name)}</b><button class="btn sec sm" onclick="groupForm('${g.id}')">تعديل</button><button class="btn del sm" onclick="delGroup('${g.id}')">حذف</button></div>
+    <div class="mut" style="font-size:12px;margin:4px 0">${members.map(m=>esc(m.name)).join('، ')||'لا أعضاء'}</div>
+    <div class="mut" style="font-size:12px">التقييم العام للمجموعة:</div>
+    <div class="rb">${[4,3,2,1].map(v=>`<button class="${RT[v][1]} ${gr.r===v?'on':''}" onclick="rateGroup('${g.id}',${v})">${RT[v][0]}</button>`).join('')}</div>
+    <input placeholder="ملاحظة على المجموعة (اختياري)" value="${esc(gr.n||'')}" oninput="noteGroup('${g.id}',this.value)" style="margin-bottom:6px">
+    <button class="btn sec sm" style="width:100%" onclick="applyGroup('${g.id}')">↪ تطبيق التقييم على «${esc(CRIT()[0][1])}» لكل الأعضاء</button></div>`}).join('')||'<p class="mut">لا توجد مجموعات لهذا الصف. أنشئ مجموعة أو وزّع الطلاب عشوائياً.</p>';
+  const inG=new Set(gl.flatMap(g=>g.ids)),free=sts.filter(s=>!inG.has(s.id));
+  if(gl.length&&free.length)h+=`<p class="mut" style="font-size:12px">بلا مجموعة: ${free.map(s=>esc(s.name)).join('، ')}</p>`;
+  return h;
+}
+function rateGroup(id,v){S.grp=S.grp||{};S.grp[id]=Object.assign(S.grp[id]||{},{r:v});render()}
+function noteGroup(id,t){S.grp=S.grp||{};S.grp[id]=Object.assign(S.grp[id]||{},{n:t})}
+function applyGroup(id){
+  const g=groupsOf().find(x=>x.id===id),gr=(S.grp||{})[id];
+  if(!g)return;if(!gr||!gr.r)return toast('اختر تقييم المجموعة أولاً');
+  g.ids.forEach(sid=>{const row=S.rows[sid]=S.rows[sid]||{};row.c=row.c||{};row.c.par=gr.r});
+  buzz();toast('تم تطبيق التقييم على أعضاء المجموعة ✓');render();
+}
+function groupForm(id){
+  const sts=db.students.filter(x=>x.classId===S.e.c),gl=groupsOf(),g=gl.find(x=>x.id===id)||{name:'مجموعة '+(gl.length+1),ids:[]};
+  const taken=new Set(gl.filter(x=>x.id!==id).flatMap(x=>x.ids)),avail=sts.filter(s=>!taken.has(s.id));
+  dlg(`<h2>${id?'تعديل مجموعة':'مجموعة جديدة'}</h2><label>اسم المجموعة</label><input id="gnm" value="${esc(g.name)}"><label>الأعضاء</label>
+  ${avail.map(s=>`<div><label><input type="checkbox" class="gm" style="width:auto" value="${s.id}" ${g.ids.includes(s.id)?'checked':''}> ${esc(s.name)}</label></div>`).join('')||'<p class="mut">كل الطلاب في مجموعات أخرى.</p>'}
+  <div class="er" id="er"></div><div class="row"><button class="btn sp" onclick="saveGroup('${id||''}')">حفظ</button><button class="btn sec sp" onclick="closeD()">إلغاء</button></div>`);
+}
+function saveGroup(id){
+  const name=gnm.value.trim()||'مجموعة',ids=[...document.querySelectorAll('.gm:checked')].map(x=>x.value);
+  if(!ids.length)return err('اختر عضواً واحداً على الأقل');
+  if(!db.groups)db.groups={};const gl=db.groups[S.e.c]=db.groups[S.e.c]||[],g=gl.find(x=>x.id===id);
+  if(g){g.name=name;g.ids=ids}else gl.push({id:uid(),name,ids});
+  save();buzz();closeD();render();
+}
+function delGroup(id){ask('حذف هذه المجموعة؟',()=>{db.groups[S.e.c]=groupsOf().filter(g=>g.id!==id);if(S.grp)delete S.grp[id];save();render()})}
+function randomGroupsDlg(){
+  const n=db.students.filter(x=>x.classId===S.e.c).length;if(!n)return toast('لا يوجد طلاب في هذا الصف');
+  dlg(`<h2>🎲 توزيع عشوائي</h2><p class="mut">${groupsOf().length?'سيستبدل هذا المجموعات الحالية لهذا الصف. ':''}يُوزَّع ${n} طالب على عدد المجموعات التالي:</p><label>عدد المجموعات</label><input type="number" id="gcn" value="${Math.min(4,n)}" min="1" max="${n}"><div class="row"><button class="btn sp" onclick="doRandomGroups()">توزيع</button><button class="btn sec sp" onclick="closeD()">إلغاء</button></div>`);
+}
+function doRandomGroups(){
+  const ids=db.students.filter(x=>x.classId===S.e.c).map(s=>s.id),k=Math.max(1,Math.min(ids.length,+gcn.value||2));
+  for(let i=ids.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[ids[i],ids[j]]=[ids[j],ids[i]]}
+  const gl=Array.from({length:k},(_,i)=>({id:uid(),name:'مجموعة '+(i+1),ids:[]}));
+  ids.forEach((id,i)=>gl[i%k].ids.push(id));
+  if(!db.groups)db.groups={};db.groups[S.e.c]=gl;S.grp={};save();buzz();closeD();render();
 }
 function renderEvalList(){
   const sts=db.students.filter(x=>x.classId===S.e.c);
@@ -713,8 +763,9 @@ function saveEval(){
   const sts=db.students.filter(x=>x.classId===e.c);
   const rows={};let any=false;
   sts.forEach(s=>{const r=S.rows[s.id]||{};const row={att:r.att||'p'};if(r.c&&Object.keys(r.c).length)row.c=r.c;if(r.n)row.n=r.n;if(r.pc)row.pc=r.pc;if(row.c||row.att!=='p'||row.pc)any=true;rows[s.id]=row});
-  if(!any)return toast('قيّم معياراً واحداً أو سجّل حضور طالب على الأقل');
-  db.evals[S.k]={c:e.c,s:e.s,d:e.d,p:e.p,topic:(S.topic||'').trim(),rows};save();buzz();toast('تم حفظ الحصة ✓');render();
+  const grpOut={};groupsOf().forEach(g=>{const x=(S.grp||{})[g.id];if(x&&(x.r||x.n))grpOut[g.id]={r:x.r||0,n:x.n||'',name:g.name,m:g.ids.length}});
+  if(!any&&!Object.keys(grpOut).length)return toast('قيّم معياراً واحداً أو سجّل حضور طالب أو قيّم مجموعة على الأقل');
+  db.evals[S.k]={c:e.c,s:e.s,d:e.d,p:e.p,topic:(S.topic||'').trim(),rows,groups:grpOut};save();buzz();toast('تم حفظ الحصة ✓');render();
   checkConsecutiveWeak(Object.keys(rows).filter(id=>rowScore(rows[id])!==null));
 }
 function checkConsecutiveWeak(ids){
@@ -797,7 +848,7 @@ function reportsV(){
       const rv=Object.values(e.rows),rated=rv.filter(r=>rowScore(r)!==null).length,present=rv.filter(r=>(r.att||'p')==='p').length;
       return `<div class="card"><div class="row"><b class="sp">${e.d} · حصة ${e.p}</b><span class="mut" style="font-size:12px">${esc(cn(e.c))} · ${esc(sn(e.s))}</span></div>
       <div class="mut" style="margin-top:4px">موضوع الحصة: ${e.topic?`<b style="color:var(--tx)">${esc(e.topic)}</b>`:'<span>لم يُسجَّل</span>'}</div>
-      <div class="mut" style="font-size:12px;margin-top:4px">${rated} من ${rv.length} مُقيَّمون تفصيلياً · ${present} حاضر</div></div>`;
+      <div class="mut" style="font-size:12px;margin-top:4px">${rated} من ${rv.length} مُقيَّمون تفصيلياً · ${present} حاضر</div>${e.groups&&Object.keys(e.groups).length?`<div class="mut" style="font-size:12px;margin-top:4px">👥 المجموعات: ${Object.values(e.groups).map(g=>esc(g.name)+(g.r?' ('+RT[g.r][0]+')':'')).join('، ')}</div>`:''}</div>`;
     }).join('')||'<p class="mut">لا توجد حصص مسجّلة في هذه الفترة.</p>'}`
   :tab==='plan'
   ?`<h2>تنبيه توثيق</h2>${gaps.length?gaps.map(g=>`<div class="card row" style="border-color:var(--o)"><div class="sp"><b>${esc(sn(g.sub.id))}</b> · ${esc(cn(g.cid))}<div class="mut" style="font-size:13px">${g.hasAny?`مرّت ${g.days} يوماً منذ آخر موضوع مُسجَّل`:`لم يُسجَّل أي موضوع منذ أول حصة قبل ${g.days} يوماً`}</div></div></div>`).join(''):'<p class="mut">لا توجد فجوات توثيق حالياً — كل المواد موثَّقة بانتظام 👍</p>'}
@@ -1021,7 +1072,7 @@ function importBackupFile(inp){
   r.onload=(e)=>{
     let d;try{d=JSON.parse(e.target.result);if(!d.classes||!d.students||!d.subjects||!d.evals)throw 0}
     catch(x){return err('الملف غير صالح. تأكد أنه ملف نسخة احتياطية صحيح بصيغة JSON')}
-    ask('استبدال البيانات الحالية بالنسخة المستوردة؟',()=>{db=d;if(!db.holidays)db.holidays=[];save();buzz();toast('تم الاستيراد ✓');go('home')});
+    ask('استبدال البيانات الحالية بالنسخة المستوردة؟',()=>{db=d;if(!db.holidays)db.holidays=[];if(!db.groups)db.groups={};save();buzz();toast('تم الاستيراد ✓');go('home')});
   };
   r.onerror=()=>err('تعذّرت قراءة الملف');
   r.readAsText(f);
